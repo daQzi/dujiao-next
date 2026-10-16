@@ -125,6 +125,9 @@ func (a *externalAdapter) get16688(ctx context.Context, code string) (*UpstreamP
 }
 
 func (a *externalAdapter) priced16688(ctx context.Context, item goods16688) (*UpstreamProduct, error) {
+	if item.DeliveryMethod != "3" && item.AvailableQuantity == "0" {
+		return a.unavailable16688(item)
+	}
 	quantity := 1
 	if item.LimitQuantity != "" {
 		n, err := strconv.Atoi(string(item.LimitQuantity))
@@ -135,12 +138,29 @@ func (a *externalAdapter) priced16688(ctx context.Context, item goods16688) (*Up
 	}
 	quote, err := a.quote16688(ctx, item.GoodsNo, quantity)
 	if err != nil {
+		if is16688SoldOut(err) {
+			return a.unavailable16688(item)
+		}
 		return nil, err
 	}
 	amount, _ := decimal.NewFromString(string(quote.TotalAmount))
 	// Include procurement fees in the imported cost, rounding up to a cent.
 	item.UnitPrice = wireScalar(amount.Div(decimal.NewFromInt(int64(quantity))).RoundCeil(2).String())
 	return a.map16688(item)
+}
+
+func (a *externalAdapter) unavailable16688(item goods16688) (*UpstreamProduct, error) {
+	product, err := a.map16688(item)
+	if err != nil {
+		return nil, err
+	}
+	product.IsActive = false
+	for i := range product.SKUs {
+		product.SKUs[i].IsActive = false
+		product.SKUs[i].StockQuantity = 0
+		product.SKUs[i].StockStatus = "out_of_stock"
+	}
+	return product, nil
 }
 
 func (a *externalAdapter) map16688(item goods16688) (*UpstreamProduct, error) {

@@ -137,7 +137,7 @@ func (s *Service) BatchImportByCategory(
 	}
 	var targetProducts []upstream.UpstreamProduct
 	for _, p := range allProducts {
-		if p.CategoryID == upstreamCategoryID {
+		if p.CategoryID == upstreamCategoryID && p.IsActive {
 			targetProducts = append(targetProducts, p)
 		}
 	}

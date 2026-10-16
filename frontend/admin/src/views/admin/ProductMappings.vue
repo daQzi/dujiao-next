@@ -367,7 +367,9 @@ const handleDelete = async (mapping: AdminProductMapping) => {
 
 // --- Import dialog ---
 
-const selectableProducts = computed(() => upstreamProducts.value.filter((p) => !mappedUpstreamIds.value.has(p.id)))
+const isImportableProduct = (product: UpstreamProduct) => product.is_active && !mappedUpstreamIds.value.has(product.id)
+
+const selectableProducts = computed(() => upstreamProducts.value.filter(isImportableProduct))
 
 const allSelected = computed(() => {
   if (selectableProducts.value.length === 0) return false
@@ -381,7 +383,8 @@ const toggleSelectAll = () => {
 }
 
 const toggleProduct = (id: number) => {
-  if (mappedUpstreamIds.value.has(id)) return
+  const product = upstreamProducts.value.find((item) => item.id === id)
+  if (!product || !isImportableProduct(product)) return
   const next = new Set(selectedProductIds.value)
   next.has(id) ? next.delete(id) : next.add(id)
   selectedProductIds.value = next
@@ -404,6 +407,13 @@ const getSkuPriceRange = (product: UpstreamProduct) => {
 
 const isSkuAvailable = (status: string) =>
   status === 'in_stock' || status === 'low_stock' || status === 'unlimited'
+
+const getUnavailableLabel = (product: UpstreamProduct) => {
+  if (product.skus?.length && product.skus.every((sku) => sku.stock_status === 'out_of_stock')) {
+    return t('productMappings.import.noStockCannotImport')
+  }
+  return t('productMappings.status.inactive')
+}
 
 const getSkuStockSummary = (product: UpstreamProduct) => {
   if (!product.skus || product.skus.length === 0) return '-'
@@ -533,7 +543,7 @@ const categoryDisplayList = computed(() => {
   const counts = categoryProductCounts.value
   const countOf = (catId: number) => counts ? (counts.get(catId) || 0) : (productsByCategory.value.get(catId) || []).length
 
-  const result: { category: UpstreamCategory; productCount: number; path: string; nonMappedCount: number; fullyLoaded: boolean }[] = []
+  const result: { category: UpstreamCategory; productCount: number; path: string; mappedCount: number; importableCount: number; fullyLoaded: boolean }[] = []
 
   for (const cat of upstreamCategories.value) {
     const productCount = countOf(cat.id)
@@ -544,13 +554,14 @@ const categoryDisplayList = computed(() => {
     const path = parentCat
       ? `${getLocalizedText(parentCat.name)} / ${getLocalizedText(cat.name)}`
       : getLocalizedText(cat.name)
-    // 未映射数量只能基于已加载商品估算；未全部加载时不能当作准确值展示/用于禁用按钮
+    // Importable count is approximate until every page in the category has loaded.
     const fullyLoaded = loadedProducts.length >= productCount
-    const loadedNonMapped = loadedProducts.filter(p => !mappedUpstreamIds.value.has(p.id)).length
-    // 未全部加载时，未映射数至少等于“已加载且未映射”的数量，避免因分页未加载全就误判为 0 导致按钮被禁用
-    const nonMappedCount = fullyLoaded ? loadedNonMapped : Math.max(loadedNonMapped, 1)
+    const mappedCount = loadedProducts.filter(p => mappedUpstreamIds.value.has(p.id)).length
+    const loadedImportable = loadedProducts.filter(isImportableProduct).length
+    // A partially loaded category may contain more importable products on later pages.
+    const importableCount = fullyLoaded ? loadedImportable : Math.max(loadedImportable, 1)
 
-    result.push({ category: cat, productCount, path, nonMappedCount, fullyLoaded })
+    result.push({ category: cat, productCount, path, mappedCount, importableCount, fullyLoaded })
   }
 
   // Also include uncategorized (category_id = 0) if any
@@ -558,13 +569,15 @@ const categoryDisplayList = computed(() => {
   if (uncategorizedCount > 0) {
     const loadedUncategorized = productsByCategory.value.get(0) || []
     const fullyLoaded = loadedUncategorized.length >= uncategorizedCount
-    const loadedNonMapped = loadedUncategorized.filter(p => !mappedUpstreamIds.value.has(p.id)).length
-    const nonMappedCount = fullyLoaded ? loadedNonMapped : Math.max(loadedNonMapped, 1)
+    const mappedCount = loadedUncategorized.filter(p => mappedUpstreamIds.value.has(p.id)).length
+    const loadedImportable = loadedUncategorized.filter(isImportableProduct).length
+    const importableCount = fullyLoaded ? loadedImportable : Math.max(loadedImportable, 1)
     result.push({
       category: { id: 0, parent_id: 0, slug: '', name: {}, icon: '', sort_order: -1 },
       productCount: uncategorizedCount,
       path: t('productMappings.import.uncategorized'),
-      nonMappedCount,
+      mappedCount,
+      importableCount,
       fullyLoaded,
     })
   }
@@ -581,7 +594,7 @@ const toggleCategoryExpand = (catId: number) => {
 const selectAllInCategory = (catId: number, v: boolean | 'indeterminate') => {
   const products = productsByCategory.value.get(catId) || []
   const s = new Set(selectedProductIds.value)
-  const nonMapped = products.filter(p => !mappedUpstreamIds.value.has(p.id))
+  const nonMapped = products.filter(isImportableProduct)
   if (v === true) {
     for (const p of nonMapped) s.add(p.id)
   } else {
@@ -592,7 +605,7 @@ const selectAllInCategory = (catId: number, v: boolean | 'indeterminate') => {
 
 const isCategoryAllSelected = (catId: number) => {
   const products = productsByCategory.value.get(catId) || []
-  const nonMapped = products.filter(p => !mappedUpstreamIds.value.has(p.id))
+  const nonMapped = products.filter(isImportableProduct)
   return nonMapped.length > 0 && nonMapped.every(p => selectedProductIds.value.has(p.id))
 }
 
@@ -1062,7 +1075,7 @@ onMounted(() => { fetchConnections(); fetchCategories(); fetchMappings() })
                   <div class="min-w-0 flex-1">
                     <span class="text-sm font-medium text-foreground">{{ catItem.path }}</span>
                     <span class="ml-2 text-xs text-muted-foreground">{{ t('productMappings.import.productsCount', { count: catItem.productCount }) }}</span>
-                    <span v-if="catItem.fullyLoaded && catItem.nonMappedCount < catItem.productCount" class="ml-1 text-xs text-amber-600">({{ catItem.productCount - catItem.nonMappedCount }} {{ t('productMappings.import.alreadyMapped') }})</span>
+                    <span v-if="catItem.fullyLoaded && catItem.mappedCount > 0" class="ml-1 text-xs text-amber-600">({{ catItem.mappedCount }} {{ t('productMappings.import.alreadyMapped') }})</span>
                   </div>
                   <div class="flex items-center gap-2 shrink-0" @click.stop>
                     <Checkbox
@@ -1073,7 +1086,7 @@ onMounted(() => { fetchConnections(); fetchCategories(); fetchMappings() })
                       size="sm"
                       variant="outline"
                       class="h-7 text-xs"
-                      :disabled="categoryImporting || catItem.nonMappedCount === 0"
+                      :disabled="categoryImporting || catItem.importableCount === 0"
                       @click="handleImportCategory(catItem.category.id)"
                     >{{ t('productMappings.import.importCategory') }}</Button>
                   </div>
@@ -1085,16 +1098,19 @@ onMounted(() => { fetchConnections(); fetchCategories(); fetchMappings() })
                     v-for="product in (productsByCategory.get(catItem.category.id) || [])"
                     :key="product.id"
                     class="transition-colors border-t border-border/30"
-                    :class="[selectedProductIds.has(product.id) ? 'bg-primary/5' : '', mappedUpstreamIds.has(product.id) ? 'opacity-50' : '']"
+                    :class="[selectedProductIds.has(product.id) ? 'bg-primary/5' : '', !isImportableProduct(product) ? 'opacity-50' : '']"
                   >
-                    <div class="flex items-center gap-3 px-4 pl-11 py-2.5" :class="mappedUpstreamIds.has(product.id) ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-muted/20'" @click="toggleProduct(product.id)">
+                    <div class="flex items-center gap-3 px-4 pl-11 py-2.5" :class="isImportableProduct(product) ? 'cursor-pointer hover:bg-muted/20' : 'cursor-not-allowed'" @click="toggleProduct(product.id)">
                       <div @click.stop>
-                        <Checkbox :model-value="selectedProductIds.has(product.id)" :disabled="mappedUpstreamIds.has(product.id)" @update:model-value="() => toggleProduct(product.id)" />
+                        <Checkbox :model-value="selectedProductIds.has(product.id)" :disabled="!isImportableProduct(product)" @update:model-value="() => toggleProduct(product.id)" />
                       </div>
                       <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-2">
                           <span class="break-words text-sm text-foreground sm:truncate">{{ getLocalizedText(product.title) }}</span>
                           <span class="shrink-0 text-[10px] font-mono text-muted-foreground">#{{ product.id }}</span>
+                          <span v-if="!product.is_active" class="shrink-0 inline-flex rounded-full border border-border bg-muted/30 px-2 py-0.5 text-[10px] text-muted-foreground">
+                            {{ getUnavailableLabel(product) }}
+                          </span>
                           <span v-if="mappedUpstreamIds.has(product.id)" class="shrink-0 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
                             {{ t('productMappings.import.alreadyMapped') }}
                           </span>
@@ -1137,17 +1153,17 @@ onMounted(() => { fetchConnections(); fetchCategories(); fetchMappings() })
                 <span class="text-xs font-medium text-muted-foreground">{{ t('productMappings.import.selectAll') }} ({{ upstreamProducts.length }}/{{ upstreamTotal }})</span>
               </div>
               <div class="divide-y divide-border max-h-[50vh] overflow-y-auto">
-                <div v-for="product in upstreamProducts" :key="product.id" class="transition-colors" :class="[selectedProductIds.has(product.id) ? 'bg-primary/5' : '', mappedUpstreamIds.has(product.id) ? 'opacity-50' : '']">
-                  <div class="flex items-center gap-3 px-4 py-3" :class="mappedUpstreamIds.has(product.id) ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-muted/20'" @click="toggleProduct(product.id)">
+                <div v-for="product in upstreamProducts" :key="product.id" class="transition-colors" :class="[selectedProductIds.has(product.id) ? 'bg-primary/5' : '', !isImportableProduct(product) ? 'opacity-50' : '']">
+                  <div class="flex items-center gap-3 px-4 py-3" :class="isImportableProduct(product) ? 'cursor-pointer hover:bg-muted/20' : 'cursor-not-allowed'" @click="toggleProduct(product.id)">
                     <div @click.stop>
-                      <Checkbox :model-value="selectedProductIds.has(product.id)" :disabled="mappedUpstreamIds.has(product.id)" @update:model-value="() => toggleProduct(product.id)" />
+                      <Checkbox :model-value="selectedProductIds.has(product.id)" :disabled="!isImportableProduct(product)" @update:model-value="() => toggleProduct(product.id)" />
                     </div>
                     <div class="min-w-0 flex-1">
                       <div class="flex flex-wrap items-center gap-2">
                         <span class="break-words text-sm font-medium text-foreground sm:truncate">{{ getLocalizedText(product.title) }}</span>
                         <span class="shrink-0 text-[10px] font-mono text-muted-foreground">#{{ product.id }}</span>
                         <span class="shrink-0 inline-flex rounded-full border px-2 py-0.5 text-[10px]" :class="product.is_active ? 'text-emerald-700 border-emerald-200 bg-emerald-50' : 'text-muted-foreground border-border bg-muted/30'">
-                          {{ product.is_active ? t('productMappings.status.active') : t('productMappings.status.inactive') }}
+                          {{ product.is_active ? t('productMappings.status.active') : getUnavailableLabel(product) }}
                         </span>
                         <span v-if="mappedUpstreamIds.has(product.id)" class="shrink-0 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] text-amber-700">
                           {{ t('productMappings.import.alreadyMapped') }}

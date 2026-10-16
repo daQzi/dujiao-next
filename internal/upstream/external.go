@@ -71,6 +71,15 @@ type externalAPIError struct{ message string }
 
 func (e *externalAPIError) Error() string { return "upstream rejected request: " + e.message }
 
+func is16688SoldOut(err error) bool {
+	var apiErr *externalAPIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	message := strings.ToLower(strings.TrimSpace(apiErr.message))
+	return strings.Contains(message, "售罄") || strings.Contains(message, "sold out") || strings.Contains(message, "soldout")
+}
+
 func (a *externalAdapter) namespace(kind string) string { return a.protocol + ":" + kind }
 func (a *externalAdapter) reference(kind, externalID string) (uint, error) {
 	return a.store.RegisterReference(a.connectionID, a.namespace(kind), externalID)

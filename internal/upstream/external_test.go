@@ -357,6 +357,48 @@ func TestExternal16688PaginationKeepsCallerPageSize(t *testing.T) {
 	}
 }
 
+func TestExternal16688SoldOutQuoteDoesNotHideAvailableGoods(t *testing.T) {
+	store := newRemoteMemory()
+	a, closeServer := externalTestAdapter(t, constants.ConnectionProtocol16688, store, func(w http.ResponseWriter, r *http.Request) {
+		assertSigned(t, constants.ConnectionProtocol16688, r)
+		switch r.URL.Path {
+		case "/openApi/goods/list":
+			data := map[string]any{
+				"total": 2,
+				"list": []any{
+					map[string]any{"goods_no": "SOLD-1", "source": "supply", "name": "Sold out", "delivery_method": 1, "available_quantity": 5, "limit_quantity": 1, "unit_price": 2},
+					map[string]any{"goods_no": "LIVE-1", "source": "supply", "name": "Available", "delivery_method": 1, "available_quantity": 5, "limit_quantity": 1, "unit_price": 2},
+				},
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 1, "data": data})
+		case "/openApi/purchase/quotePrice":
+			if r.PostForm.Get("goods_no") == "SOLD-1" {
+				_ = json.NewEncoder(w).Encode(map[string]any{"code": 0, "msg": "商品已售罄", "data": nil})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 1, "data": map[string]any{"total_amount": "2.05", "balance_enough": true}})
+		default:
+			t.Errorf("unexpected endpoint %s", r.URL.Path)
+		}
+	})
+	defer closeServer()
+
+	result, err := a.ListProducts(context.Background(), ListProductsOpts{Page: 1, PageSize: 50})
+	if err != nil {
+		t.Fatalf("sold-out quote should not fail the catalog page: %v", err)
+	}
+	if result.Total != 2 || len(result.Items) != 2 {
+		t.Fatalf("expected both products, got total=%d items=%d", result.Total, len(result.Items))
+	}
+	soldOut, available := result.Items[0], result.Items[1]
+	if soldOut.IsActive || soldOut.SKUs[0].IsActive || soldOut.SKUs[0].StockQuantity != 0 || soldOut.SKUs[0].StockStatus != "out_of_stock" {
+		t.Fatalf("sold-out product must be visible but unavailable: %+v", soldOut)
+	}
+	if !available.IsActive || available.PriceAmount != "2.05" || available.SKUs[0].StockStatus != "in_stock" {
+		t.Fatalf("available product must remain importable: %+v", available)
+	}
+}
+
 func TestExternalPurchaseNeverFollowsRedirect(t *testing.T) {
 	var received atomic.Int32
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { received.Add(1) }))
