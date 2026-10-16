@@ -3,6 +3,7 @@ name: custom-container
 on:
   push:
     branches:
+      - main
       - codex/upstream-yichiyuan-16688
     paths:
       - 'Dockerfile'
