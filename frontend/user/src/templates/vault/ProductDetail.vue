@@ -191,7 +191,7 @@
           <span class="-mb-0.5 border-b-[3px] border-primary py-3.5 text-base font-bold text-foreground">{{ t('productDetail.details') }}</span>
         </div>
         <div class="prose max-w-none dark:prose-invert prose-a:text-primary prose-img:rounded-md">
-          <p v-if="getLocalizedText(product.description)">{{ getLocalizedText(product.description) }}</p>
+          <p v-if="getLocalizedText(product.description)">{{ htmlToPlainText(getLocalizedText(product.description)) }}</p>
           <div v-if="product.content" v-html="processHtmlForDisplay(getLocalizedText(product.content))"></div>
         </div>
       </section>
@@ -253,7 +253,7 @@ import {
   RotateCw, ShoppingCart, Tag, TicketCheck, UserPlus, Zap,
 } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
-import { processHtmlForDisplay } from '../../utils/content'
+import { htmlToPlainText, processHtmlForDisplay } from '../../utils/content'
 import { useProductDetail } from '../../composables/useProductDetail'
 import VaultProductMobileBar from './components/VaultProductMobileBar.vue'
 

@@ -1,4 +1,7 @@
+import DOMPurify from 'dompurify'
 import { getImageUrl } from './image'
+
+export { htmlToPlainText } from './htmlText'
 
 /**
  * 将 HTML 内容中的图片路径转换为显示用的绝对路径
@@ -7,11 +10,11 @@ import { getImageUrl } from './image'
 export function processHtmlForDisplay(html: string): string {
     if (!html) return ''
 
-    // 匹配 src="/uploads/..."，支持单引号和双引号
-    // 使用非贪婪匹配 .*?
-    return html.replace(/src=["'](\/uploads\/.*?)["']/g, (_, path) => {
+    // Resolve local uploads before sanitizing, then keep rich upstream HTML safe for v-html.
+    const withResolvedImages = html.replace(/src=["'](\/uploads\/.*?)["']/g, (_, path) => {
         return `src="${getImageUrl(path)}"`
     })
+    return DOMPurify.sanitize(withResolvedImages)
 }
 
 /**

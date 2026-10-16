@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/dujiao-next/internal/constants"
+	"github.com/dujiao-next/internal/htmltext"
 	"github.com/shopspring/decimal"
 )
 
@@ -204,7 +205,7 @@ func (a *externalAdapter) map16688(item goods16688) (*UpstreamProduct, error) {
 		minimum, maximum = 1, 1
 	}
 	return &UpstreamProduct{
-		ID: id, Slug: fmt.Sprintf("16688-%d", id), Title: locale(item.Name), Description: locale(item.Description), Content: locale(item.Description), Images: images,
+		ID: id, Slug: fmt.Sprintf("16688-%d", id), Title: locale(item.Name), Description: locale(htmltext.StripToPlainText(item.Description)), Content: locale(item.Description), Images: images,
 		PriceAmount: amount, Currency: "CNY", FulfillmentType: fulfillment, IsActive: true,
 		MinPurchaseQuantity: minimum, MaxPurchaseQuantity: maximum,
 		SKUs: []UpstreamSKU{{ID: id, SKUCode: item.GoodsNo, PriceAmount: amount, StockQuantity: stock, StockStatus: stockStatus(stock), IsActive: true}},

@@ -246,7 +246,7 @@ func TestExternalYcyRoundTripAndUnsupportedVariants(t *testing.T) {
 			if variant {
 				config["sku"] = map[string]any{"size": "large"}
 			}
-			data = map[string]any{"code": "OPAQUE-CODE", "name": "Card", "user_price": "2.50", "stock": 5, "delivery_way": 0, "config": config, "minimum": 1, "maximum": 3}
+			data = map[string]any{"code": "OPAQUE-CODE", "name": "Card", "description": `<p>Yichiyuan details</p><ul><li>Service included</li></ul>`, "user_price": "2.50", "stock": 5, "delivery_way": 0, "config": config, "minimum": 1, "maximum": 3}
 		case "/shared/commodity/stock":
 			data = map[string]any{"stock": "5"}
 		case "/shared/commodity/valuation":
@@ -281,6 +281,12 @@ func TestExternalYcyRoundTripAndUnsupportedVariants(t *testing.T) {
 	p, err := a.GetProduct(ctx, list.Items[0].ID)
 	if err != nil || p.CategoryID == 0 || p.MaxPurchaseQuantity != 3 {
 		t.Fatalf("get %v %v", p, err)
+	}
+	if p.Description["zh-CN"] != "Yichiyuan details\n\n• Service included" {
+		t.Fatalf("HTML description must be converted to plain text: %q", p.Description["zh-CN"])
+	}
+	if p.Content["zh-CN"] != `<p>Yichiyuan details</p><ul><li>Service included</li></ul>` {
+		t.Fatalf("rich description content should be retained for sanitized rendering: %q", p.Content["zh-CN"])
 	}
 	result, err := a.CreateOrder(ctx, CreateUpstreamOrderReq{SKUID: p.SKUs[0].ID, Quantity: 1, TraceID: "trace", DownstreamOrderNo: "LOCAL"})
 	if err != nil || !result.OK {
@@ -367,7 +373,7 @@ func TestExternal16688SoldOutQuoteDoesNotHideAvailableGoods(t *testing.T) {
 				"total": 2,
 				"list": []any{
 					map[string]any{"goods_no": "SOLD-1", "source": "supply", "name": "Sold out", "delivery_method": 1, "available_quantity": 5, "limit_quantity": 1, "unit_price": 2},
-					map[string]any{"goods_no": "LIVE-1", "source": "supply", "name": "Available", "delivery_method": 1, "available_quantity": 5, "limit_quantity": 1, "unit_price": 2},
+					map[string]any{"goods_no": "LIVE-1", "source": "supply", "name": "Available", "description": `<p style="color:red">Available details</p><ul><li>Includes service</li></ul>`, "delivery_method": 1, "available_quantity": 5, "limit_quantity": 1, "unit_price": 2},
 				},
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"code": 1, "data": data})
@@ -396,6 +402,12 @@ func TestExternal16688SoldOutQuoteDoesNotHideAvailableGoods(t *testing.T) {
 	}
 	if !available.IsActive || available.PriceAmount != "2.05" || available.SKUs[0].StockStatus != "in_stock" {
 		t.Fatalf("available product must remain importable: %+v", available)
+	}
+	if available.Description["zh-CN"] != "Available details\n\n• Includes service" {
+		t.Fatalf("HTML description must be converted to plain text: %q", available.Description["zh-CN"])
+	}
+	if available.Content["zh-CN"] != `<p style="color:red">Available details</p><ul><li>Includes service</li></ul>` {
+		t.Fatalf("rich description content should be retained for sanitized rendering: %q", available.Content["zh-CN"])
 	}
 }
 

@@ -331,6 +331,7 @@
 import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { htmlToPlainText } from '../utils/content'
 import { useAppStore } from '../stores/app'
 import { useCartStore } from '../stores/cart'
 import { useBuyNowStore } from '../stores/buyNow'
@@ -385,7 +386,7 @@ const quantity = ref(1)
 const purchaseWarning = ref('')
 
 const productTitle = computed(() => getLocalizedText(props.product?.title))
-const productDescription = computed(() => getLocalizedText(props.product?.description))
+const productDescription = computed(() => htmlToPlainText(getLocalizedText(props.product?.description)))
 
 const formatPromotionRule = (rule: any) => {
   const amount = formatPrice(rule.min_amount, siteCurrency.value)

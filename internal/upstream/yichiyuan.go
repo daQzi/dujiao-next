@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/dujiao-next/internal/constants"
+	"github.com/dujiao-next/internal/htmltext"
 	"github.com/shopspring/decimal"
 )
 
@@ -139,7 +140,7 @@ func (a *externalAdapter) mapYcy(item ycyProduct, categoryID uint) (*UpstreamPro
 		images = append(images, item.Cover)
 	}
 	return &UpstreamProduct{
-		ID: id, Slug: fmt.Sprintf("ycy-%d", id), Title: locale(item.Name), Description: locale(item.Description), Content: locale(item.Description),
+		ID: id, Slug: fmt.Sprintf("ycy-%d", id), Title: locale(item.Name), Description: locale(htmltext.StripToPlainText(item.Description)), Content: locale(item.Description),
 		CategoryID: categoryID, PriceAmount: amount, Currency: "CNY", FulfillmentType: constants.FulfillmentTypeAuto, IsActive: a.ycyDeliveryStatusConfirmed,
 		Images: images,
 		SKUs:   []UpstreamSKU{{ID: id, SKUCode: item.Code, PriceAmount: amount, StockQuantity: stock, StockStatus: stockStatus(stock), IsActive: a.ycyDeliveryStatusConfirmed}},

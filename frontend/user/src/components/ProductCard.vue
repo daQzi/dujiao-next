@@ -91,7 +91,7 @@
       </div>
 
       <p class="hidden md:block text-muted-foreground text-sm mb-6 line-clamp-2">
-        {{ getLocalizedText(product.description) }}
+        {{ htmlToPlainText(getLocalizedText(product.description)) }}
       </p>
 
       <div class="flex items-center justify-between border-t pt-2 md:pt-4 mt-auto">
@@ -166,6 +166,7 @@ import { useI18n } from 'vue-i18n'
 import { computed, ref, watch } from 'vue'
 import { ArrowRight, ChevronRight, Image as ImageIcon, Lock, Pencil, ShoppingCart, UserPlus, Zap } from 'lucide-vue-next'
 import { getFirstImageUrl, getImageUrl } from '../utils/image'
+import { htmlToPlainText } from '../utils/content'
 import { useLocalized, useProductLabels } from '../composables/useProduct'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'

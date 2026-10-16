@@ -250,7 +250,7 @@
                     {{ t('productDetail.description') }}
                   </h2>
                   <p class="text-lg leading-relaxed text-muted-foreground">
-                    {{ getLocalizedText(product.description) }}
+                    {{ htmlToPlainText(getLocalizedText(product.description)) }}
                   </p>
                 </div>
               </div>
@@ -415,7 +415,7 @@ import { ref, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ArrowLeft, Lock, Minus, Pencil, Plus, RotateCw, Tag, UserPlus, Zap } from 'lucide-vue-next'
 import { getImageUrl } from '../utils/image'
-import { processHtmlForDisplay } from '../utils/content'
+import { htmlToPlainText, processHtmlForDisplay } from '../utils/content'
 import { useProductDetail } from '../composables/useProductDetail'
 import ProductImageGallery from '../components/product/ProductImageGallery.vue'
 import ProductMobileBar from '../components/product/ProductMobileBar.vue'
