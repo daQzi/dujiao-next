@@ -34,7 +34,8 @@ FROM --platform=$BUILDPLATFORM golang:1.26.5-alpine AS builder
 ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT
-ARG APP_VERSION=v1.0.0
+ARG APP_VERSION=custom
+ARG APP_BUILD_TYPE=source
 RUN echo "Building for $TARGETOS/$TARGETARCH$TARGETVARIANT"
 
 WORKDIR /src
@@ -54,7 +55,7 @@ RUN set -eux; \
     export GOOS="$TARGETOS" GOARCH="$TARGETARCH"; \
     if [ "$TARGETARCH" = "arm" ] && [ -n "$TARGETVARIANT" ]; then export GOARM="${TARGETVARIANT#v}"; fi; \
     if [ "$TARGETARCH" = "amd64" ] && [ -n "$TARGETVARIANT" ]; then export GOAMD64="${TARGETVARIANT#v}"; fi; \
-    go build -trimpath -tags release,fullstack -ldflags="-s -w -X github.com/dujiao-next/internal/version.Version=${APP_VERSION} -X github.com/dujiao-next/internal/version.BuildType=release" -o /out/dujiao-next ./cmd/server
+    go build -trimpath -tags release,fullstack -ldflags="-s -w -X github.com/dujiao-next/internal/version.Version=${APP_VERSION} -X github.com/dujiao-next/internal/version.BuildType=${APP_BUILD_TYPE}" -o /out/dujiao-next ./cmd/server
 
 # ---- 阶段 3：运行时 ----
 FROM alpine:latest
