@@ -113,6 +113,8 @@ func TestIsRetryableErrorCode(t *testing.T) {
 		"forbidden",
 		"duplicate_order",
 		"product_out_of_stock",
+		"purchase_uncertain",
+		"upstream_rejected",
 	}
 	for _, code := range nonRetryable {
 		if isRetryableErrorCode(code) {

@@ -556,6 +556,7 @@ export interface AdminUserLoginLog {
 
 // --- SiteConnection ---
 export interface AdminSiteConnection {
+  ycy_delivery_status_confirmed?: boolean
   id: number
   name: string
   type: string

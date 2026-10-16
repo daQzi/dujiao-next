@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	siteconnectioncontract "github.com/dujiao-next/internal/modules/siteconnection/contract"
 	siteconnectiondomain "github.com/dujiao-next/internal/modules/siteconnection/domain"
 
 	productdomain "github.com/dujiao-next/internal/modules/catalog/product/domain"
@@ -55,25 +56,27 @@ type ProductListResult struct {
 
 // UpstreamProduct 上游商品信息
 type UpstreamProduct struct {
-	ID               uint                              `json:"id"`
-	Slug             string                            `json:"slug"`
-	SeoMeta          jsonmap.JSON                      `json:"seo_meta"`
-	Title            jsonmap.JSON                      `json:"title"`
-	Description      jsonmap.JSON                      `json:"description"`
-	Content          jsonmap.JSON                      `json:"content"`
-	Images           []string                          `json:"images"`
-	Tags             []string                          `json:"tags"`
-	PriceAmount      string                            `json:"price_amount"`
-	OriginalPrice    string                            `json:"original_price,omitempty"`
-	MemberPrice      string                            `json:"member_price,omitempty"`
-	WholesalePrices  productdomain.WholesalePriceTiers `json:"wholesale_prices,omitempty"`
-	Currency         string                            `json:"currency"`
-	FulfillmentType  string                            `json:"fulfillment_type"`
-	ManualFormSchema jsonmap.JSON                      `json:"manual_form_schema"`
-	IsActive         bool                              `json:"is_active"`
-	CategoryID       uint                              `json:"category_id"`
-	SKUs             []UpstreamSKU                     `json:"skus"`
-	UpdatedAt        time.Time                         `json:"updated_at"`
+	ID                  uint                              `json:"id"`
+	Slug                string                            `json:"slug"`
+	SeoMeta             jsonmap.JSON                      `json:"seo_meta"`
+	Title               jsonmap.JSON                      `json:"title"`
+	Description         jsonmap.JSON                      `json:"description"`
+	Content             jsonmap.JSON                      `json:"content"`
+	Images              []string                          `json:"images"`
+	Tags                []string                          `json:"tags"`
+	PriceAmount         string                            `json:"price_amount"`
+	OriginalPrice       string                            `json:"original_price,omitempty"`
+	MemberPrice         string                            `json:"member_price,omitempty"`
+	WholesalePrices     productdomain.WholesalePriceTiers `json:"wholesale_prices,omitempty"`
+	Currency            string                            `json:"currency"`
+	FulfillmentType     string                            `json:"fulfillment_type"`
+	ManualFormSchema    jsonmap.JSON                      `json:"manual_form_schema"`
+	MinPurchaseQuantity int                               `json:"min_purchase_quantity,omitempty"`
+	MaxPurchaseQuantity int                               `json:"max_purchase_quantity,omitempty"`
+	IsActive            bool                              `json:"is_active"`
+	CategoryID          uint                              `json:"category_id"`
+	SKUs                []UpstreamSKU                     `json:"skus"`
+	UpdatedAt           time.Time                         `json:"updated_at"`
 }
 
 // UpstreamCategory 上游分类信息
@@ -177,10 +180,18 @@ type Adapter interface {
 }
 
 // NewAdapter 根据协议类型创建适配器
-func NewAdapter(conn *siteconnectiondomain.Connection, uploadsDir string) (Adapter, error) {
+func NewAdapter(conn *siteconnectiondomain.Connection, uploadsDir string, stores ...siteconnectioncontract.RemoteRepository) (Adapter, error) {
+	if conn == nil {
+		return nil, fmt.Errorf("upstream connection is nil")
+	}
 	switch conn.Protocol {
 	case constants.ConnectionProtocolDujiaoNext:
 		return NewDujiaoNextAdapter(conn, uploadsDir), nil
+	case constants.ConnectionProtocolYichiyuan, constants.ConnectionProtocol16688:
+		if conn.ID == 0 || len(stores) == 0 || stores[0] == nil {
+			return nil, fmt.Errorf("upstream protocol %s requires durable reference storage", conn.Protocol)
+		}
+		return newExternalAdapter(conn, uploadsDir, stores[0]), nil
 	default:
 		return nil, fmt.Errorf("unsupported protocol: %s", conn.Protocol)
 	}

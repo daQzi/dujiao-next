@@ -124,6 +124,10 @@ func (h *AdminHandler) UpdateSiteConnection(c *gin.Context) {
 
 	conn, err := h.connections.Update(id, input)
 	if err != nil {
+		if errors.Is(err, siteconnectioncontract.ErrInvalid) {
+			ginutil.RespondError(c, response.CodeBadRequest, "error.connection_invalid", nil)
+			return
+		}
 		if errors.Is(err, siteconnectioncontract.ErrNotFound) {
 			ginutil.RespondError(c, response.CodeNotFound, "error.connection_not_found", nil)
 			return

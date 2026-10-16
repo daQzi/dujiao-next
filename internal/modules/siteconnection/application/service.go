@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"net/url"
 	"strings"
 	"time"
 
@@ -56,6 +57,9 @@ func (s *Service) Create(input CreateInput) (*siteconnectiondomain.Connection, e
 	if protocol == "" {
 		protocol = constants.ConnectionProtocolDujiaoNext
 	}
+	if !validProtocolURL(protocol, input.BaseURL) {
+		return nil, siteconnectioncontract.ErrInvalid
+	}
 
 	encryptedSecret, err := crypto.Encrypt(s.encryptKey, input.ApiSecret)
 	if err != nil {
@@ -77,19 +81,20 @@ func (s *Service) Create(input CreateInput) (*siteconnectiondomain.Connection, e
 	}
 
 	conn := &siteconnectiondomain.Connection{
-		Name:               strings.TrimSpace(input.Name),
-		BaseURL:            strings.TrimRight(strings.TrimSpace(input.BaseURL), "/"),
-		ApiKey:             strings.TrimSpace(input.ApiKey),
-		ApiSecret:          encryptedSecret,
-		Protocol:           protocol,
-		CallbackURL:        strings.TrimSpace(input.CallbackURL),
-		Status:             constants.ConnectionStatusPending,
-		RetryMax:           retryMax,
-		RetryIntervals:     retryIntervals,
-		ExchangeRate:       s.normalizeExchangeRate(input.ExchangeRate),
-		PriceMarkupPercent: decimal.NewFromFloat(input.PriceMarkupPercent),
-		PriceRoundingMode:  roundingMode,
-		AutoSyncPrice:      input.AutoSyncPrice,
+		Name:                       strings.TrimSpace(input.Name),
+		BaseURL:                    strings.TrimRight(strings.TrimSpace(input.BaseURL), "/"),
+		ApiKey:                     strings.TrimSpace(input.ApiKey),
+		ApiSecret:                  encryptedSecret,
+		Protocol:                   protocol,
+		YcyDeliveryStatusConfirmed: input.YcyDeliveryStatusConfirmed,
+		CallbackURL:                strings.TrimSpace(input.CallbackURL),
+		Status:                     constants.ConnectionStatusPending,
+		RetryMax:                   retryMax,
+		RetryIntervals:             retryIntervals,
+		ExchangeRate:               s.normalizeExchangeRate(input.ExchangeRate),
+		PriceMarkupPercent:         decimal.NewFromFloat(input.PriceMarkupPercent),
+		PriceRoundingMode:          roundingMode,
+		AutoSyncPrice:              input.AutoSyncPrice,
 	}
 
 	if err := s.connRepo.Create(conn); err != nil {
@@ -106,6 +111,17 @@ func (s *Service) Update(id uint, input UpdateInput) (*siteconnectiondomain.Conn
 	}
 	if conn == nil {
 		return nil, siteconnectioncontract.ErrNotFound
+	}
+	if input.Protocol != "" && strings.TrimSpace(input.Protocol) != conn.Protocol {
+		return nil, siteconnectioncontract.ErrInvalid
+	}
+	if conn.Protocol == constants.ConnectionProtocol16688 || conn.Protocol == constants.ConnectionProtocolYichiyuan {
+		// Opaque references and send barriers belong to the original remote
+		// account. Create a new connection instead of reassigning old mappings.
+		if (input.BaseURL != "" && strings.TrimRight(strings.TrimSpace(input.BaseURL), "/") != conn.BaseURL) ||
+			(input.ApiKey != "" && strings.TrimSpace(input.ApiKey) != conn.ApiKey) {
+			return nil, siteconnectioncontract.ErrInvalid
+		}
 	}
 
 	// 记录定价配置旧值，用于判断本次保存是否需要重算已映射商品的本地售价。
@@ -156,6 +172,9 @@ func (s *Service) Update(id uint, input UpdateInput) (*siteconnectiondomain.Conn
 	}
 	if input.AutoSyncPrice != nil {
 		conn.AutoSyncPrice = *input.AutoSyncPrice
+	}
+	if input.YcyDeliveryStatusConfirmed != nil {
+		conn.YcyDeliveryStatusConfirmed = *input.YcyDeliveryStatusConfirmed
 	}
 
 	if err := s.connRepo.Update(conn); err != nil {
@@ -229,12 +248,7 @@ func (s *Service) Ping(id uint) (*PingResult, error) {
 		return nil, err
 	}
 
-	adapter, err := upstream.NewAdapter(&siteconnectiondomain.Connection{
-		BaseURL:   conn.BaseURL,
-		ApiKey:    conn.ApiKey,
-		ApiSecret: decrypted,
-		Protocol:  conn.Protocol,
-	}, s.uploadsDir)
+	adapter, err := s.newAdapter(conn, decrypted)
 	if err != nil {
 		return nil, err
 	}
@@ -277,12 +291,19 @@ func (s *Service) GetAdapter(conn *siteconnectiondomain.Connection) (upstream.Ad
 		return nil, err
 	}
 
+	return s.newAdapter(conn, decrypted)
+}
+
+func (s *Service) newAdapter(conn *siteconnectiondomain.Connection, decrypted string) (upstream.Adapter, error) {
+	store, _ := s.connRepo.(siteconnectioncontract.RemoteRepository)
 	return upstream.NewAdapter(&siteconnectiondomain.Connection{
-		BaseURL:   conn.BaseURL,
-		ApiKey:    conn.ApiKey,
-		ApiSecret: decrypted,
-		Protocol:  conn.Protocol,
-	}, s.uploadsDir)
+		ID:                         conn.ID,
+		BaseURL:                    conn.BaseURL,
+		ApiKey:                     conn.ApiKey,
+		ApiSecret:                  decrypted,
+		Protocol:                   conn.Protocol,
+		YcyDeliveryStatusConfirmed: conn.YcyDeliveryStatusConfirmed,
+	}, s.uploadsDir, store)
 }
 
 func (s *Service) decryptSecret(conn *siteconnectiondomain.Connection) (string, error) {
@@ -300,4 +321,16 @@ func (s *Service) normalizeExchangeRate(rate float64) decimal.Decimal {
 		return decimal.NewFromInt(1)
 	}
 	return decimal.NewFromFloat(rate)
+}
+
+func validProtocolURL(protocol, baseURL string) bool {
+	switch protocol {
+	case constants.ConnectionProtocolDujiaoNext:
+		return true
+	case constants.ConnectionProtocolYichiyuan, constants.ConnectionProtocol16688:
+		u, err := url.Parse(strings.TrimSpace(baseURL))
+		return err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Hostname() != "" && u.User == nil && u.RawQuery == "" && u.Fragment == "" && (u.Path == "" || u.Path == "/")
+	default:
+		return false
+	}
 }

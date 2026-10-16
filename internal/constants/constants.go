@@ -433,6 +433,8 @@ const (
 // 对接协议类型常量
 const (
 	ConnectionProtocolDujiaoNext = "dujiao-next"
+	ConnectionProtocolYichiyuan  = "yichiyuan"
+	ConnectionProtocol16688      = "16688"
 )
 
 // API 凭证状态常量

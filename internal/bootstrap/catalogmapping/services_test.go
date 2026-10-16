@@ -883,11 +883,13 @@ func TestImportUpstreamProductPrefersUpstreamSlug(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"ok": true,
 			"product": upstream.UpstreamProduct{
-				ID:          uint(id),
-				Slug:        upstreamSlugs[r.URL.Path],
-				Title:       jsonmap.JSON{"zh-CN": "P"},
-				PriceAmount: "10.00",
-				IsActive:    true,
+				ID:                  uint(id),
+				Slug:                upstreamSlugs[r.URL.Path],
+				MinPurchaseQuantity: 2,
+				MaxPurchaseQuantity: 5,
+				Title:               jsonmap.JSON{"zh-CN": "P"},
+				PriceAmount:         "10.00",
+				IsActive:            true,
 			},
 		})
 	}))
@@ -932,6 +934,9 @@ func TestImportUpstreamProductPrefersUpstreamSlug(t *testing.T) {
 		var product productdomain.Product
 		if err := db.First(&product, mapping.LocalProductID).Error; err != nil {
 			t.Fatalf("load product failed: %v", err)
+		}
+		if product.MinPurchaseQuantity != 2 || product.MaxPurchaseQuantity != 5 {
+			t.Fatal("upstream purchase limits were not imported")
 		}
 		if tc.want != "" && product.Slug != tc.want {
 			t.Fatalf("upstream %d: expected slug %q, got %q", tc.upstreamID, tc.want, product.Slug)

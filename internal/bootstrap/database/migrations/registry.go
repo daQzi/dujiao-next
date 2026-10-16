@@ -85,6 +85,8 @@ func AutoMigrate() error {
 		&settingsstore.SettingRecord{},
 		&apicredentialdomain.ApiCredential{},
 		&siteconnectiondomain.Connection{},
+		&siteconnectiondomain.RemoteReference{},
+		&siteconnectiondomain.PurchaseAttempt{},
 		&mappingdomain.Mapping{},
 		&mappingdomain.SKUMapping{},
 		&procurementdomain.Order{},

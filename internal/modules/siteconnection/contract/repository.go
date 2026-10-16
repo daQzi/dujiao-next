@@ -19,3 +19,14 @@ type Repository interface {
 	List(filter ListFilter) ([]siteconnectiondomain.Connection, int64, error)
 	ListActive() ([]siteconnectiondomain.Connection, error)
 }
+
+// RemoteRepository is scoped by connection and protocol, not by credentials or process memory.
+type RemoteRepository interface {
+	RegisterReference(connectionID uint, namespace, externalID string) (uint, error)
+	ResolveReference(connectionID uint, namespace string, id uint) (string, error)
+	SaveReferenceAmount(connectionID uint, namespace string, id uint, amount string) error
+	ReferenceAmount(connectionID uint, namespace string, id uint) (string, error)
+	BeginPurchase(connectionID uint, key, fingerprint string) (claimed bool, result string, err error)
+	FinishPurchase(connectionID uint, key, result string) error
+	ReleasePurchase(connectionID uint, key string) error
+}

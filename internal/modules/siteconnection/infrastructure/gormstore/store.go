@@ -2,12 +2,14 @@ package gormstore
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	siteconnectioncontract "github.com/dujiao-next/internal/modules/siteconnection/contract"
 	siteconnectiondomain "github.com/dujiao-next/internal/modules/siteconnection/domain"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Store 是 SiteConnection 的 GORM 持久化实现。
@@ -37,7 +39,9 @@ func (r *Store) GetByID(id uint) (*siteconnectiondomain.Connection, error) {
 // GetByApiKey 根据 ApiKey 获取连接
 func (r *Store) GetByApiKey(apiKey string) (*siteconnectiondomain.Connection, error) {
 	var conn siteconnectiondomain.Connection
-	if err := r.db.Where("deleted_at IS NULL AND api_key = ?", apiKey).First(&conn).Error; err != nil {
+	// Only native Dujiao connections participate in its signed callback API.
+	// Third-party app IDs are not globally unique and must not shadow a key.
+	if err := r.db.Where("deleted_at IS NULL AND api_key = ? AND protocol = ?", apiKey, "dujiao-next").First(&conn).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
@@ -96,4 +100,85 @@ func (r *Store) ListActive() ([]siteconnectiondomain.Connection, error) {
 		return nil, err
 	}
 	return conns, nil
+}
+
+var _ siteconnectioncontract.RemoteRepository = (*Store)(nil)
+
+func (r *Store) RegisterReference(connectionID uint, namespace, externalID string) (uint, error) {
+	if connectionID == 0 || externalID == "" || len(externalID) > 200 {
+		return 0, fmt.Errorf("invalid upstream reference")
+	}
+	ref := siteconnectiondomain.RemoteReference{ConnectionID: connectionID, Namespace: namespace, ExternalID: externalID}
+	if err := r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&ref).Error; err != nil {
+		return 0, err
+	}
+	if err := r.db.Where("connection_id = ? AND namespace = ? AND external_id = ?", connectionID, namespace, externalID).First(&ref).Error; err != nil {
+		return 0, err
+	}
+	return ref.ID, nil
+}
+
+func (r *Store) ResolveReference(connectionID uint, namespace string, id uint) (string, error) {
+	var ref siteconnectiondomain.RemoteReference
+	if err := r.db.Where("id = ? AND connection_id = ? AND namespace = ?", id, connectionID, namespace).First(&ref).Error; err != nil {
+		return "", err
+	}
+	return ref.ExternalID, nil
+}
+
+func (r *Store) BeginPurchase(connectionID uint, key, fingerprint string) (bool, string, error) {
+	attempt := siteconnectiondomain.PurchaseAttempt{ConnectionID: connectionID, RequestKey: key, Fingerprint: fingerprint}
+	result := r.db.Clauses(clause.OnConflict{DoNothing: true}).Create(&attempt)
+	if result.Error != nil {
+		return false, "", result.Error
+	}
+	if result.RowsAffected == 1 {
+		return true, "", nil
+	}
+	if err := r.db.Where("connection_id = ? AND request_key = ?", connectionID, key).First(&attempt).Error; err != nil {
+		return false, "", err
+	}
+	if attempt.Fingerprint != fingerprint {
+		return false, "", fmt.Errorf("purchase request changed; reconcile the original purchase before retrying")
+	}
+	return false, attempt.Result, nil
+}
+
+func (r *Store) SaveReferenceAmount(connectionID uint, namespace string, id uint, amount string) error {
+	result := r.db.Model(&siteconnectiondomain.RemoteReference{}).Where("id = ? AND connection_id = ? AND namespace = ?", id, connectionID, namespace).Update("amount", amount)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return fmt.Errorf("order receipt reference not found")
+	}
+	return nil
+}
+
+func (r *Store) ReferenceAmount(connectionID uint, namespace string, id uint) (string, error) {
+	var ref siteconnectiondomain.RemoteReference
+	if err := r.db.Where("id = ? AND connection_id = ? AND namespace = ?", id, connectionID, namespace).First(&ref).Error; err != nil {
+		return "", err
+	}
+	if ref.Amount == "" {
+		return "", fmt.Errorf("order amount is unavailable")
+	}
+	return ref.Amount, nil
+}
+
+func (r *Store) FinishPurchase(connectionID uint, key, result string) error {
+	updated := r.db.Model(&siteconnectiondomain.PurchaseAttempt{}).
+		Where("connection_id = ? AND request_key = ? AND result = ?", connectionID, key, "").Update("result", result)
+	if updated.Error != nil {
+		return updated.Error
+	}
+	if updated.RowsAffected != 1 {
+		return fmt.Errorf("purchase receipt was not saved")
+	}
+	return nil
+}
+
+// Only the claiming caller may release a barrier, before sending a purchase.
+func (r *Store) ReleasePurchase(connectionID uint, key string) error {
+	return r.db.Where("connection_id = ? AND request_key = ? AND result = ?", connectionID, key, "").Delete(&siteconnectiondomain.PurchaseAttempt{}).Error
 }

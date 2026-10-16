@@ -313,6 +313,8 @@ func isRetryableErrorCode(code string) bool {
 		"forbidden":            true,
 		"duplicate_order":      true,
 		"product_out_of_stock": true,
+		"upstream_rejected":    true,
+		"purchase_uncertain":   true,
 	}
 	return !nonRetryable[strings.ToLower(strings.TrimSpace(code))]
 }

@@ -53,6 +53,31 @@ type fakeMarkupReapplier struct {
 	calls []uint
 }
 
+func TestExternalConnectionIdentityCannotBeReassigned(t *testing.T) {
+	for _, protocol := range []string{constants.ConnectionProtocolYichiyuan, constants.ConnectionProtocol16688} {
+		conn := newReapplyTestConn()
+		conn.Protocol = protocol
+		svc := siteconnectionapp.NewService(&siteConnectionRepoStub{conn: conn}, "test-secret", t.TempDir())
+		for _, input := range []siteconnectionapp.UpdateInput{{Protocol: constants.ConnectionProtocolDujiaoNext}, {BaseURL: "https://other.example.com"}, {ApiKey: "another-account"}} {
+			if _, err := svc.Update(conn.ID, input); err == nil {
+				t.Fatal("remote identity reassigned")
+			}
+		}
+		if _, err := svc.Update(conn.ID, siteconnectionapp.UpdateInput{Name: "renamed", ApiSecret: "rotated-secret"}); err != nil {
+			t.Fatal("safe update failed", err)
+		}
+	}
+}
+
+func TestExternalConnectionRequiresRootURL(t *testing.T) {
+	svc := siteconnectionapp.NewService(&siteConnectionRepoStub{}, "test-secret", t.TempDir())
+	for _, base := range []string{"https://example.com/openApi", "https://example.com/?token=secret", "https://user:pass@example.com", "ftp://example.com"} {
+		if _, err := svc.Create(siteconnectionapp.CreateInput{Name: "external", BaseURL: base, ApiKey: "42", ApiSecret: "secret", Protocol: constants.ConnectionProtocol16688}); err == nil {
+			t.Fatal("invalid root URL accepted", base)
+		}
+	}
+}
+
 func (f *fakeMarkupReapplier) ReapplyMarkup(connectionID uint) (int, error) {
 	f.calls = append(f.calls, connectionID)
 	return 0, nil

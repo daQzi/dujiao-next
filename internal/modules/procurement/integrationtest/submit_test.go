@@ -1,10 +1,15 @@
 package procurement_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	fulfillmentdomain "github.com/dujiao-next/internal/modules/fulfillment/domain"
+	siteconnectiondomain "github.com/dujiao-next/internal/modules/siteconnection/domain"
+	"github.com/dujiao-next/internal/upstream"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	orderdomain "github.com/dujiao-next/internal/modules/order/domain"
@@ -370,5 +375,121 @@ func TestSubmitToUpstream_StatusChangedDuringRequest_KeepsStatusAndRecordsUpstre
 					concurrent, updated.Status, updated.UpstreamOrderID, updated.UpstreamOrderNo)
 			}
 		})
+	}
+}
+
+func TestExternalProcurementSubmitPollAndUncertainRetry(t *testing.T) {
+	for _, protocol := range []string{constants.ConnectionProtocol16688, constants.ConnectionProtocolYichiyuan} {
+		for _, uncertain := range []bool{false, true} {
+			t.Run(protocol+map[bool]string{false: "/success", true: "/uncertain"}[uncertain], func(t *testing.T) {
+				db := setupProcurementTestDB(t)
+				if err := db.AutoMigrate(&siteconnectiondomain.RemoteReference{}, &siteconnectiondomain.PurchaseAttempt{}); err != nil {
+					t.Fatal(err)
+				}
+				var purchases atomic.Int32
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					_ = r.ParseForm()
+					var data any
+					success := 1
+					if protocol == constants.ConnectionProtocolYichiyuan {
+						success = 200
+					}
+					switch r.URL.Path {
+					case "/openApi/goods/list":
+						data = map[string]any{"total": 1, "list": []any{map[string]any{"goods_no": "SG1", "source": "supply", "name": "Card", "unit_price": 10, "delivery_method": 1, "available_quantity": 10, "limit_quantity": 1}}}
+					case "/openApi/goods/detail":
+						data = map[string]any{"goods_no": "SG1", "source": "supply", "name": "Card", "unit_price": 10, "delivery_method": 1, "available_quantity": 10, "limit_quantity": 1}
+					case "/openApi/purchase/quotePrice":
+						data = map[string]any{"total_amount": 10, "balance_enough": true}
+					case "/shared/commodity/items":
+						data = []any{map[string]any{"id": 1, "name": "Cards", "children": []any{map[string]any{"code": "SG1", "name": "Card", "user_price": 10, "stock": 10, "delivery_way": 0, "config": ""}}}}
+					case "/shared/commodity/item":
+						data = map[string]any{"code": "SG1", "name": "Card", "user_price": 10, "stock": 10, "delivery_way": 0, "config": []any{}}
+					case "/shared/commodity/stock":
+						data = map[string]any{"stock": 10}
+					case "/shared/commodity/valuation":
+						data = map[string]any{"price": 10}
+					case "/shared/commodity/inventoryState":
+						data = []any{}
+					case "/openApi/purchase/create", "/shared/commodity/trade":
+						purchases.Add(1)
+						if uncertain {
+							w.WriteHeader(http.StatusBadGateway)
+							return
+						}
+						data = map[string]any{"trade_no": "T-OPAQUE-1", "total_amount": 10, "tradeNo": "123260422101010888", "amount": 10}
+					case "/openApi/purchase/query":
+						data = map[string]any{"trade_no": "T-OPAQUE-1", "status": 4, "total_amount": 10, "cards": []any{map[string]any{"code": "MOCK-CARD"}}}
+					case "/shared/commodity/query":
+						data = map[string]any{"status": 1, "delivery_status": 1, "secret": "MOCK-CARD"}
+					default:
+						t.Errorf("unexpected upstream call %s", r.URL.Path)
+					}
+					_ = json.NewEncoder(w).Encode(map[string]any{"code": success, "data": data})
+				}))
+				defer server.Close()
+				connSvc := newTestSiteConnectionService(db, "test-key", t.TempDir())
+				conn, err := connSvc.Create(siteconnectionapp.CreateInput{Name: "external", BaseURL: server.URL, ApiKey: "42", ApiSecret: "secret", Protocol: protocol, YcyDeliveryStatusConfirmed: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				adapter, err := connSvc.GetAdapter(conn)
+				if err != nil {
+					t.Fatal(err)
+				}
+				list, err := adapter.ListProducts(context.Background(), upstream.ListProductsOpts{Page: 1, PageSize: 10})
+				if err != nil || len(list.Items) != 1 {
+					t.Fatalf("list %v %v", list, err)
+				}
+				order := createProcTestOrder(t, db, "EXTERNAL-ORDER", constants.OrderStatusPaid, constants.FulfillmentTypeUpstream)
+				pm := &mappingdomain.Mapping{ConnectionID: conn.ID, LocalProductID: 1, UpstreamProductID: list.Items[0].ID, IsActive: true}
+				if err := db.Create(pm).Error; err != nil {
+					t.Fatal(err)
+				}
+				if err := db.Create(&mappingdomain.SKUMapping{ProductMappingID: pm.ID, LocalSKUID: 1, UpstreamSKUID: list.Items[0].SKUs[0].ID, UpstreamIsActive: true}).Error; err != nil {
+					t.Fatal(err)
+				}
+				proc := createTestProcurementOrder(t, db, conn.ID, order.ID, order.OrderNo, constants.ProcurementStatusPending)
+				svc := newTestProcurementService(db, connSvc)
+				err = svc.SubmitToUpstream(proc.ID)
+				var got ProcurementOrder
+				if err := db.First(&got, proc.ID).Error; err != nil {
+					t.Fatal(err)
+				}
+				if uncertain {
+					if err == nil || got.Status != constants.ProcurementStatusRejected {
+						t.Fatalf("uncertain status %s %v", got.Status, err)
+					}
+					if err := svc.RetryManual(proc.ID); err != nil {
+						t.Fatal(err)
+					}
+					_ = svc.SubmitToUpstream(proc.ID)
+					if purchases.Load() != 1 {
+						t.Fatal("manual retry duplicated upstream purchase")
+					}
+					return
+				}
+				if err != nil || got.Status != constants.ProcurementStatusAccepted || got.UpstreamOrderNo == "" || got.UpstreamOrderID == 0 {
+					t.Fatalf("submit %#v %v", got, err)
+				}
+				if err := svc.PollUpstreamStatus(proc.ID); err != nil {
+					t.Fatal(err)
+				}
+				if err := db.First(&got, proc.ID).Error; err != nil {
+					t.Fatal(err)
+				}
+				var local orderdomain.Order
+				if err := db.First(&local, order.ID).Error; err != nil {
+					t.Fatal(err)
+				}
+				var delivered fulfillmentdomain.Fulfillment
+				if err := db.Where("order_id = ?", order.ID).First(&delivered).Error; err != nil {
+					t.Fatal(err)
+				}
+				if got.Status != constants.ProcurementStatusFulfilled || local.Status != constants.OrderStatusDelivered || delivered.Payload != "MOCK-CARD" || purchases.Load() != 1 {
+					t.Fatalf("delivery failed %s %s %s", got.Status, local.Status, delivered.Payload)
+				}
+			})
+		}
 	}
 }

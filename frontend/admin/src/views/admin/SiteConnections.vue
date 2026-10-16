@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { AdminSiteConnection } from '@/api/types'
@@ -35,6 +35,7 @@ const form = reactive({
   api_key: '',
   api_secret: '',
   protocol: 'dujiao-next',
+  ycy_delivery_status_confirmed: 'false',
   callback_url: '',
   retry_max: 3,
   retry_intervals: '30,60,120',
@@ -44,6 +45,7 @@ const form = reactive({
   auto_sync_price: 'false',
 })
 const reapplyingId = ref<number | null>(null)
+const externalProtocol = computed(() => form.protocol === 'yichiyuan' || form.protocol === '16688')
 
 const siteConnectionSchema = {
   name: [rules.required()],
@@ -94,6 +96,7 @@ const resetForm = () => {
     api_key: '',
     api_secret: '',
     protocol: 'dujiao-next',
+    ycy_delivery_status_confirmed: 'false',
     callback_url: '',
     retry_max: 3,
     retry_intervals: '30,60,120',
@@ -121,6 +124,7 @@ const openEditModal = (conn: AdminSiteConnection) => {
     api_key: conn.api_key || '',
     api_secret: conn.api_secret || '',
     protocol: conn.protocol || 'dujiao-next',
+    ycy_delivery_status_confirmed: conn.ycy_delivery_status_confirmed ? 'true' : 'false',
     callback_url: conn.callback_url || '',
     retry_max: conn.retry_max ?? 3,
     retry_intervals: (() => {
@@ -159,6 +163,7 @@ const buildPayload = () => {
     api_key: form.api_key,
     api_secret: form.api_secret,
     protocol: form.protocol,
+    ycy_delivery_status_confirmed: form.ycy_delivery_status_confirmed === 'true',
     callback_url: form.callback_url,
     retry_max: Number(form.retry_max) || 3,
     retry_intervals: JSON.stringify(intervals),
@@ -381,32 +386,49 @@ onMounted(() => {
             </div>
             <div class="md:col-span-2">
               <label class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('siteConnections.form.baseUrl') }}</label>
-              <Input v-model="form.base_url" required :placeholder="t('siteConnections.form.baseUrlPlaceholder')" />
+              <Input v-model="form.base_url" required :disabled="isEditing && externalProtocol" :placeholder="t('siteConnections.form.baseUrlPlaceholder')" />
               <p v-if="errors.base_url" class="text-xs text-destructive mt-1">{{ errors.base_url }}</p>
             </div>
             <div>
-              <label class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('siteConnections.form.apiKey') }}</label>
-              <Input v-model="form.api_key" :placeholder="t('siteConnections.form.apiKeyPlaceholder')" />
+              <label class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ externalProtocol ? t('siteConnections.form.appId') : t('siteConnections.form.apiKey') }}</label>
+              <Input v-model="form.api_key" :disabled="isEditing && externalProtocol" :placeholder="externalProtocol ? t('siteConnections.form.appId') : t('siteConnections.form.apiKeyPlaceholder')" />
               <p v-if="errors.api_key" class="text-xs text-destructive mt-1">{{ errors.api_key }}</p>
             </div>
             <div>
-              <label class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('siteConnections.form.apiSecret') }}</label>
+              <label class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ externalProtocol ? t('siteConnections.form.appSecret') : t('siteConnections.form.apiSecret') }}</label>
               <Input v-model="form.api_secret" type="password" :placeholder="t('siteConnections.form.apiSecretPlaceholder')" />
             </div>
             <div>
               <label class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('siteConnections.form.protocol') }}</label>
-              <Select v-model="form.protocol">
+              <Select v-model="form.protocol" :disabled="isEditing">
                 <SelectTrigger class="h-9 w-full">
                   <SelectValue :placeholder="t('siteConnections.form.protocolPlaceholder')" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="dujiao-next">dujiao-next</SelectItem>
+                  <SelectItem value="yichiyuan">{{ t('siteConnections.form.yichiyuan') }}</SelectItem>
+                  <SelectItem value="16688">{{ t('siteConnections.form.platform16688') }}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            <div v-if="externalProtocol" class="md:col-span-2 rounded-md border border-border bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
+              {{ t(form.protocol === 'yichiyuan' ? 'siteConnections.form.yichiyuanHint' : 'siteConnections.form.platform16688Hint') }}
+              {{ t('siteConnections.form.externalSafetyHint') }}
+            </div>
+            <div v-if="form.protocol === 'yichiyuan'" class="md:col-span-2">
+              <label class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('siteConnections.form.ycyDeliveryStatusConfirmed') }}</label>
+              <Select v-model="form.ycy_delivery_status_confirmed">
+                <SelectTrigger class="h-9 w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="false">{{ t('admin.common.no') }}</SelectItem>
+                  <SelectItem value="true">{{ t('admin.common.yes') }}</SelectItem>
+                </SelectContent>
+              </Select>
+              <p class="mt-1 text-xs text-muted-foreground">{{ t('siteConnections.form.ycyDeliveryStatusHint') }}</p>
+            </div>
             <div>
               <label class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('siteConnections.form.callbackUrl') }}</label>
-              <Input v-model="form.callback_url" :placeholder="t('siteConnections.form.callbackUrlPlaceholder')" />
+              <Input v-model="form.callback_url" :disabled="externalProtocol" :placeholder="t('siteConnections.form.callbackUrlPlaceholder')" />
             </div>
             <div>
               <label class="mb-1.5 block text-xs font-medium text-muted-foreground">{{ t('siteConnections.form.retryMax') }}</label>

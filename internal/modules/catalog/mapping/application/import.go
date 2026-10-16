@@ -172,6 +172,8 @@ func (s *Service) importUpstreamProduct(connectionID uint, upstreamProductID uin
 		DescriptionJSON:      upProduct.Description,
 		ContentJSON:          localContent,
 		ManualFormSchemaJSON: upProduct.ManualFormSchema,
+		MinPurchaseQuantity:  upProduct.MinPurchaseQuantity,
+		MaxPurchaseQuantity:  upProduct.MaxPurchaseQuantity,
 		PriceAmount:          money.FromDecimal(priceAmount.Round(2)),
 		CostPriceAmount:      money.FromDecimal(costPriceAmount.Round(2)),
 		WholesalePrices:      productdomain.WholesalePriceTiers{},

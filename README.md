@@ -3,6 +3,98 @@
 Dujiao-Next is a digital goods e-commerce platform. This repository contains the complete
 application: the Go backend, the customer storefront, and the admin panel.
 
+## External Upstream Integrations (Custom Build)
+
+This checkout adds `yichiyuan` and `16688` protocols under **Upstream / Site Connections**.
+It is based on upstream commit `41b86260dc9a60269526057eed8d915844ceb3a3`.
+Build from this source; official prebuilt binaries do not contain these adapters.
+Keep custom builds on `BuildType=source` so an official self-update cannot replace the changes.
+
+### Configuration
+
+- Run Redis and the background worker (`-mode all`, or separate API and worker processes).
+  Procurement and delivery polling require the queue; API-only mode without a worker is insufficient.
+- Select a protocol, use the site **root URL** (no `/openApi` or documentation path),
+  put `app_id` in Application ID, and put `app_key` (Yichiyuan) or `secret` (16688) in Application Secret.
+  Production URLs should use HTTPS. Secrets retain the existing encrypted-at-rest behavior.
+- Test the connection, then import goods through the existing product-mapping screen.
+  Configure markup and exchange rate before publishing, and verify a single low-value purchase first.
+  Connection tests and catalog queries do not purchase goods.
+- 16688 requires already-agented **supply** goods and a funded operating wallet. Local merchant
+  goods are not procurement sources. Imported and synchronized prices include the quoted procurement
+  fee (per-unit cost rounded up to a cent); quantity-based fees and future price changes can still
+  affect the actual charge. Set a sufficient margin. Categories are not exposed because the goods
+  response does not associate supply goods with the merchant's local category identifiers.
+- Yichiyuan supports basic automatic cards only. Category/SKU variants, custom widgets, typed
+  contacts and order passwords are rejected, rather than purchasing an unspecified default variant.
+  Preselection and manual-delivery goods are not supported. Minimum/maximum quantities are imported
+  and checked again immediately before procurement; changed upstream limits may require a re-import.
+  This adapter requires CNY; older responses omit currency, so confirm the upstream shop currency
+  before enabling. If a response explicitly reports another currency, import/purchase is rejected.
+- External connection identity (protocol, root URL and application ID) cannot be reassigned.
+  Create another connection for a different account/site. Secret rotation remains supported.
+
+### Yichiyuan Delivery-Status Requirement
+
+The documented `/shared/commodity/query` returns **payment** `status` and `secret`, but no
+reliable delivery state. The upstream source can place a review/waiting message in `secret`,
+including for automatic goods. Treating that as a card would incorrectly complete the local order.
+
+For this reason, Yichiyuan procurement and product import are disabled by default. The upstream
+operator must add the real order `delivery_status` to the authenticated query response (without
+removing existing fields), then verify it and enable **Upstream delivery status extension verified**
+on the connection. This is an explicit extension, not a field promised by the linked API document.
+If the upstream cannot add it, do not enable the switch; catalog inspection remains available,
+but automatic Yichiyuan fulfillment is not ready for production.
+
+For the upstream controller shown in the current Yichiyuan source, the response addition is:
+
+```php
+return $this->json(200, 'success', [
+    'secret' => $secret,
+    'widget' => $widget,
+    'status' => $order->status,
+    'delivery_status' => (int)$order->delivery_status, // 0=pending, 1=delivered
+]);
+```
+
+Only payment `status=1`, `delivery_status=1` and non-empty content complete local fulfillment.
+Missing/invalid delivery status fails the query and leaves the order pending for investigation.
+
+### Purchase Safety and Recovery
+
+String product codes and order numbers are preserved in `upstream_remote_references`; local
+numeric IDs never truncate or hash the actual identifiers. `upstream_purchase_attempts` provides
+a durable unique send barrier per connection and procurement trace. Both new tables and the
+`site_connections.ycy_delivery_status_confirmed` column are added by normal startup migrations,
+with SQLite and PostgreSQL-compatible GORM operations. No existing rows are deleted.
+
+After a purchase has been sent, retries reuse a saved successful receipt and never purchase again.
+Timeouts, malformed responses, upstream errors and receipt-save failures keep the barrier. Even
+manual retries cannot resend an uncertain purchase. A failed *preflight* can be retried because no
+purchase request was sent. Yichiyuan also receives a stable `request_no`; 16688 documents no
+equivalent idempotency key. This conservative approach can require manual intervention after a
+crash, even if the first request never reached the upstream.
+
+For an uncertain purchase, stop retries and check the upstream purchase history, account balance,
+local order/trace and (16688) `dujiao:<request hash>` remark. Fulfill an existing purchase manually,
+or refund/resolve locally after reconciling. There is intentionally no UI action that blindly clears
+the barrier. Do not delete attempt/reference rows, recreate the same purchase under a new connection,
+or remove these tables while orders are outstanding; those actions can cause duplicate charges.
+Neither upstream documents a purchase-cancellation endpoint, so accepted purchases cannot be
+canceled through this integration. 16688 full-refund status is mapped from its documented order
+state; the actual refunded amount is not inferred from the original charge (fees may be retained).
+Complaint workflows and partial-refund accounting are not implemented, and upstream refunds do
+not automatically refund the local customer's payment; reconcile and handle that separately.
+
+Back up the database and `app.secret_key` before upgrading or rolling back. A rollback binary
+will not understand the new protocols: disable their mapped products and resolve outstanding
+orders first, while retaining the extra tables and encrypted configuration. Deployment should use
+this source's Dockerfile or a custom fullstack binary, not the official one-click download.
+
+API references: [Yichiyuan](https://faka.wiki/zh-cn/dev/api.html),
+[16688](https://www.16688.com.cn/api/purchase/docs/).
+
 ## ❤️ Brand Partners (Sponsors)
 
 <table>
