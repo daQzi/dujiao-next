@@ -189,6 +189,17 @@ const dujiaopayConfig = reactive({
   cancel_url: '',
 })
 
+type LiandongTier = { amount_fen: string; goods_key: string }
+
+const liandongConfig = reactive({
+  gateway_url: '',
+  client_gateway_url: '',
+  merchant_key: '',
+  notify_url: 'https://yourdomain.com/api/v1/payments/callback',
+  return_url: '',
+  goods: [{ amount_fen: '1000', goods_key: '' }] as LiandongTier[],
+})
+
 const epayChannelOptions = [
   { value: 'wechat', label: 'admin.paymentChannels.channelTypes.wechat' },
   { value: 'alipay', label: 'admin.paymentChannels.channelTypes.alipay' },
@@ -222,6 +233,8 @@ const channelOptions = [
   ...officialChannelOptions,
   ...okpayChannelOptions,
 ]
+
+const maxLiandongTiers = 12
 
 const paymentTypeOptions = computed(() => [
   { value: 'order', label: t('admin.paymentChannels.paymentTypes.order') },
@@ -301,6 +314,9 @@ const interactionModeOptions = computed(() => {
       { value: 'qr', label: 'admin.paymentChannels.interactionModes.qr' },
       { value: 'redirect', label: 'admin.paymentChannels.interactionModes.redirect' },
     ]
+  }
+  if (form.provider_type === 'liandong') {
+    return [{ value: 'qr', label: 'admin.paymentChannels.interactionModes.qr' }]
   }
   if (form.provider_type === 'official' && form.channel_type === 'paypal') {
     return [{ value: 'redirect', label: 'admin.paymentChannels.interactionModes.redirect' }]
@@ -461,6 +477,25 @@ const resetDujiaoPayConfig = () => {
   dujiaopayConfig.cancel_url = 'https://yourdomain.com/pay'
 }
 
+const resetLiandongConfig = () => {
+  liandongConfig.gateway_url = ''
+  liandongConfig.client_gateway_url = ''
+  liandongConfig.merchant_key = ''
+  liandongConfig.notify_url = 'https://yourdomain.com/api/v1/payments/callback'
+  liandongConfig.return_url = ''
+  liandongConfig.goods = [{ amount_fen: '1000', goods_key: '' }]
+}
+
+const addLiandongTier = () => {
+  if (liandongConfig.goods.length >= maxLiandongTiers) return
+  liandongConfig.goods.push({ amount_fen: '', goods_key: '' })
+}
+
+const removeLiandongTier = (index: number) => {
+  if (liandongConfig.goods.length <= 1) return
+  liandongConfig.goods.splice(index, 1)
+}
+
 const resetAllConfigs = () => {
   resetEpayConfig()
   resetPaypalConfig()
@@ -472,6 +507,7 @@ const resetAllConfigs = () => {
   resetTokenpayConfig()
   resetOkpayConfig()
   resetDujiaoPayConfig()
+  resetLiandongConfig()
 }
 
 // --- Apply functions ---
@@ -606,6 +642,25 @@ const applyDujiaoPayConfig = (raw: Record<string, unknown>) => {
   dujiaopayConfig.fiat_currency = String(raw.fiat_currency || 'CNY').toUpperCase()
   dujiaopayConfig.success_url = String(raw.success_url || '')
   dujiaopayConfig.cancel_url = String(raw.cancel_url || '')
+}
+
+const applyLiandongConfig = (raw: Record<string, unknown>) => {
+  liandongConfig.gateway_url = String(raw.gateway_url || '')
+  liandongConfig.client_gateway_url = String(raw.client_gateway_url || '')
+  liandongConfig.merchant_key = String(raw.merchant_key || '')
+  liandongConfig.notify_url = String(raw.notify_url || '')
+  liandongConfig.return_url = String(raw.return_url || '')
+  const goods = Array.isArray(raw.goods) ? (raw.goods as unknown[]) : []
+  const tiers = goods
+    .map((item) => {
+      const row = (item || {}) as Record<string, unknown>
+      return {
+        amount_fen: String(row.amount_fen ?? '').trim(),
+        goods_key: String(row.goods_key ?? '').trim(),
+      }
+    })
+    .filter((item) => item.amount_fen !== '' || item.goods_key !== '')
+  liandongConfig.goods = tiers.length > 0 ? tiers : [{ amount_fen: '1000', goods_key: '' }]
 }
 
 // --- Build functions ---
@@ -856,6 +911,73 @@ const resolveDujiaopayChannelType = () =>
     ? 'dujiaopay'
     : String(form.channel_type || '').trim().toLowerCase()
 
+const buildLiandongConfig = () => {
+  const config: Record<string, unknown> = {}
+  const setIfNotEmpty = (key: string, value: string) => {
+    const trimmed = String(value || '').trim()
+    if (trimmed !== '') {
+      config[key] = trimmed
+    }
+  }
+  setIfNotEmpty('gateway_url', liandongConfig.gateway_url)
+  setIfNotEmpty('client_gateway_url', liandongConfig.client_gateway_url)
+  setIfNotEmpty('merchant_key', liandongConfig.merchant_key)
+  setIfNotEmpty('notify_url', liandongConfig.notify_url)
+  setIfNotEmpty('return_url', liandongConfig.return_url)
+
+  const goods: Array<{ amount_fen: number; goods_key: string }> = []
+  const seen = new Set<number>()
+  liandongConfig.goods.forEach((tier) => {
+    const amountFen = Number(String(tier.amount_fen || '').trim())
+    const goodsKey = String(tier.goods_key || '').trim()
+    if (!Number.isFinite(amountFen) || amountFen <= 0 || goodsKey === '') return
+    if (seen.has(amountFen)) return
+    seen.add(amountFen)
+    goods.push({ amount_fen: Math.trunc(amountFen), goods_key: goodsKey })
+  })
+  config.goods = goods
+  return config
+}
+
+const validateLiandongConfig = (): string => {
+  const gatewayUrl = String(liandongConfig.gateway_url || '').trim()
+  const clientGatewayUrl = String(liandongConfig.client_gateway_url || '').trim()
+  const merchantKey = String(liandongConfig.merchant_key || '').trim()
+  const notifyUrl = String(liandongConfig.notify_url || '').trim()
+  if (!/^https?:\/\//i.test(gatewayUrl)) {
+    return t('admin.paymentChannels.errors.liandongGatewayUrlInvalid')
+  }
+  if (!/^https?:\/\//i.test(clientGatewayUrl)) {
+    return t('admin.paymentChannels.errors.liandongClientGatewayUrlInvalid')
+  }
+  if (merchantKey.length < 16) {
+    return t('admin.paymentChannels.errors.liandongMerchantKeyInvalid')
+  }
+  if (!/^https:\/\//i.test(notifyUrl)) {
+    return t('admin.paymentChannels.errors.liandongNotifyUrlInvalid')
+  }
+  const goods = liandongConfig.goods
+    .map((tier) => ({
+      amountFen: Number(String(tier.amount_fen || '').trim()),
+      goodsKey: String(tier.goods_key || '').trim(),
+    }))
+    .filter((tier) => tier.amountFen !== 0 || tier.goodsKey !== '')
+  if (goods.length === 0 || goods.length > maxLiandongTiers) {
+    return t('admin.paymentChannels.errors.liandongTiersInvalid')
+  }
+  const seen = new Set<number>()
+  for (const tier of goods) {
+    if (!Number.isFinite(tier.amountFen) || tier.amountFen <= 0 || tier.goodsKey === '') {
+      return t('admin.paymentChannels.errors.liandongTiersInvalid')
+    }
+    if (seen.has(tier.amountFen)) {
+      return t('admin.paymentChannels.errors.liandongTierDuplicate')
+    }
+    seen.add(tier.amountFen)
+  }
+  return ''
+}
+
 // --- Watchers for provider_type / channel_type ---
 
 watch(
@@ -892,6 +1014,8 @@ watch(
       }
     } else if (value === 'tokenpay') {
       form.channel_type = 'usdt'
+    } else if (value === 'liandong') {
+      form.channel_type = 'liandong'
     }
     const allowedInteractionModes = interactionModeOptions.value.map((item) => item.value)
     if (!allowedInteractionModes.includes(form.interaction_mode)) {
@@ -1057,6 +1181,7 @@ watch(
           applyTokenpayConfig(channel.config_json)
           applyOkpayConfig(channel.config_json)
           applyDujiaoPayConfig(channel.config_json)
+          applyLiandongConfig(channel.config_json)
           if (channel.provider_type === 'okpay' && !String(form.channel_type || '').trim()) {
             form.channel_type = resolveOkpayChannelTypeFromConfig(channel.config_json)
           }
@@ -1193,6 +1318,16 @@ const handleSubmit = async () => {
       ...configJson,
       ...buildDujiaoPayConfig(),
     }
+  } else if (form.provider_type === 'liandong') {
+    const validationError = validateLiandongConfig()
+    if (validationError !== '') {
+      error.value = validationError
+      return
+    }
+    configJson = {
+      ...configJson,
+      ...buildLiandongConfig(),
+    }
   }
 
   // 专用表单构建器可能会重写同名字段；高级 JSON 中的显式 null
@@ -1214,6 +1349,8 @@ const handleSubmit = async () => {
             ? 'epusdt'
             : form.provider_type === 'dujiaopay'
               ? resolveDujiaopayChannelType()
+              : form.provider_type === 'liandong'
+                ? 'liandong'
           : form.channel_type,
     interaction_mode: form.interaction_mode,
     fee_rate: String(form.fee_rate || '0').trim(),
@@ -1280,10 +1417,11 @@ const closeModal = () => {
                 <SelectItem value="epusdt">{{ t('admin.paymentChannels.providerTypes.epusdt') }}</SelectItem>
                 <SelectItem value="okpay">{{ t('admin.paymentChannels.providerTypes.okpay') }}</SelectItem>
                 <SelectItem value="tokenpay">{{ t('admin.paymentChannels.providerTypes.tokenpay') }}</SelectItem>
+                <SelectItem value="liandong">{{ t('admin.paymentChannels.providerTypes.liandong') }}</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          <div v-if="form.provider_type !== 'tokenpay' && form.provider_type !== 'bepusdt' && form.provider_type !== 'epusdt' && form.provider_type !== 'dujiaopay'" class="min-w-0">
+          <div v-if="form.provider_type !== 'tokenpay' && form.provider_type !== 'bepusdt' && form.provider_type !== 'epusdt' && form.provider_type !== 'dujiaopay' && form.provider_type !== 'liandong'" class="min-w-0">
             <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.paymentChannels.modal.channelType') }}</label>
             <Select v-model="form.channel_type">
               <SelectTrigger class="h-9 w-full">
@@ -1891,6 +2029,76 @@ const closeModal = () => {
             </div>
           </div>
           <div class="mt-3 text-xs text-muted-foreground">{{ t('admin.paymentChannels.modal.dujiaopayHint') }}</div>
+        </div>
+
+        <div v-if="form.provider_type === 'liandong'" class="min-w-0 rounded-xl border border-border bg-muted/20 p-4 overflow-hidden">
+          <div class="text-sm font-semibold text-foreground mb-3">{{ t('admin.paymentChannels.modal.liandongSection') }}</div>
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-2 [&>*]:min-w-0">
+            <div class="min-w-0 md:col-span-2">
+              <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.paymentChannels.modal.liandongGatewayUrl') }}</label>
+              <Input v-model="liandongConfig.gateway_url" :placeholder="t('admin.paymentChannels.modal.liandongGatewayUrlPlaceholder')" />
+              <p class="mt-1 text-xs text-muted-foreground">{{ t('admin.paymentChannels.modal.liandongGatewayUrlHint') }}</p>
+            </div>
+            <div class="min-w-0 md:col-span-2">
+              <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.paymentChannels.modal.liandongClientGatewayUrl') }}</label>
+              <Input v-model="liandongConfig.client_gateway_url" :placeholder="t('admin.paymentChannels.modal.liandongClientGatewayUrlPlaceholder')" />
+              <p class="mt-1 text-xs text-muted-foreground">{{ t('admin.paymentChannels.modal.liandongClientGatewayUrlHint') }}</p>
+            </div>
+            <div class="min-w-0 md:col-span-2">
+              <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.paymentChannels.modal.liandongMerchantKey') }}</label>
+              <Input v-model="liandongConfig.merchant_key" type="password" :placeholder="t('admin.paymentChannels.modal.liandongMerchantKeyPlaceholder')" />
+            </div>
+            <div class="min-w-0 md:col-span-2">
+              <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.paymentChannels.modal.liandongNotifyUrl') }}</label>
+              <Input v-model="liandongConfig.notify_url" :placeholder="t('admin.paymentChannels.modal.liandongNotifyUrlPlaceholder')" />
+            </div>
+            <div class="min-w-0 md:col-span-2">
+              <label class="block text-xs font-medium text-muted-foreground mb-1.5">{{ t('admin.paymentChannels.modal.liandongReturnUrl') }}</label>
+              <Input v-model="liandongConfig.return_url" :placeholder="t('admin.paymentChannels.modal.liandongReturnUrlPlaceholder')" />
+            </div>
+          </div>
+
+          <div class="mt-5">
+            <div class="mb-2 flex items-center justify-between gap-2">
+              <label class="block text-xs font-medium text-muted-foreground">{{ t('admin.paymentChannels.modal.liandongGoods') }}</label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                :disabled="liandongConfig.goods.length >= maxLiandongTiers"
+                @click="addLiandongTier"
+              >
+                {{ t('admin.paymentChannels.modal.liandongAddTier') }}
+              </Button>
+            </div>
+            <p class="mb-2 text-xs text-muted-foreground">{{ t('admin.paymentChannels.modal.liandongGoodsHint') }}</p>
+            <div class="space-y-2">
+              <div
+                v-for="(tier, index) in liandongConfig.goods"
+                :key="index"
+                class="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_1.4fr_auto] sm:items-end"
+              >
+                <div class="min-w-0">
+                  <label class="block text-xs text-muted-foreground mb-1">{{ t('admin.paymentChannels.modal.liandongAmountFen') }}</label>
+                  <Input v-model="tier.amount_fen" type="number" min="1" step="1" :placeholder="t('admin.paymentChannels.modal.liandongAmountFenPlaceholder')" />
+                </div>
+                <div class="min-w-0">
+                  <label class="block text-xs text-muted-foreground mb-1">{{ t('admin.paymentChannels.modal.liandongGoodsKey') }}</label>
+                  <Input v-model="tier.goods_key" :placeholder="t('admin.paymentChannels.modal.liandongGoodsKeyPlaceholder')" />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  :disabled="liandongConfig.goods.length <= 1"
+                  @click="removeLiandongTier(index)"
+                >
+                  {{ t('admin.paymentChannels.modal.liandongRemoveTier') }}
+                </Button>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3 text-xs text-muted-foreground">{{ t('admin.paymentChannels.modal.liandongHint') }}</div>
         </div>
 
         <div>

@@ -343,6 +343,12 @@ func buildChannelPaymentResponse(order *orderdomain.Order, payment *paymentdomai
 			resp["token_id"] = info.TokenID
 		}
 	}
+	if bootstrap, gatewayURL := paymentpresenter.ExtractLiandongBootstrap(payment.ProviderType, payment.ProviderPayload); bootstrap != nil {
+		resp["client_bootstrap"] = bootstrap
+		if gatewayURL != "" {
+			resp["client_gateway_url"] = gatewayURL
+		}
+	}
 	if order != nil {
 		resp["order_no"] = order.OrderNo
 		resp["total_amount"] = order.TotalAmount.StringFixed(2)

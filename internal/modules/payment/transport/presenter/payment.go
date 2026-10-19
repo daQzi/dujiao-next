@@ -1,6 +1,7 @@
 package presenter
 
 import (
+	"strings"
 	"time"
 
 	paymentdomain "github.com/dujiao-next/internal/modules/payment/domain"
@@ -32,8 +33,12 @@ type CreatePaymentResp struct {
 	ChainAmount     string       `json:"chain_amount,omitempty"`
 	Chain           string       `json:"chain,omitempty"`
 	TokenID         string       `json:"token_id,omitempty"`
-	ExpiresAt       *time.Time   `json:"expires_at,omitempty"`
-	ChannelName     string       `json:"channel_name,omitempty"`
+	// ClientBootstrap / ClientGatewayURL 仅 liandong（faka2api）返回，
+	// 供买家浏览器直连发卡平台完成下单、二维码抓取与支付确认。
+	ClientBootstrap  map[string]interface{} `json:"client_bootstrap,omitempty"`
+	ClientGatewayURL string                 `json:"client_gateway_url,omitempty"`
+	ExpiresAt        *time.Time             `json:"expires_at,omitempty"`
+	ChannelName      string                 `json:"channel_name,omitempty"`
 }
 
 // CreatePaymentResultView 创建支付结果视图（供 HTTP 层构造响应，避免依赖 service）。
@@ -74,6 +79,10 @@ func NewCreatePaymentResp(result *CreatePaymentResultView) CreatePaymentResp {
 		resp.ChainAmount = info.ChainAmount
 		resp.Chain = info.Chain
 		resp.TokenID = info.TokenID
+		resp.ClientBootstrap, resp.ClientGatewayURL = ExtractLiandongBootstrap(
+			result.Payment.ProviderType,
+			result.Payment.ProviderPayload,
+		)
 	}
 	if result.Channel != nil {
 		resp.ChannelName = result.Channel.Name
@@ -83,21 +92,23 @@ func NewCreatePaymentResp(result *CreatePaymentResultView) CreatePaymentResp {
 
 // LatestPaymentResp 最新待支付记录响应
 type LatestPaymentResp struct {
-	PaymentID       uint         `json:"payment_id"`
-	OrderNo         string       `json:"order_no"`
-	ChannelID       uint         `json:"channel_id"`
-	ChannelName     string       `json:"channel_name,omitempty"`
-	ProviderType    string       `json:"provider_type"`
-	ChannelType     string       `json:"channel_type"`
-	InteractionMode string       `json:"interaction_mode"`
-	PayURL          string       `json:"pay_url"`
-	QRCode          string       `json:"qr_code"`
-	WalletAddress   string       `json:"wallet_address,omitempty"`
-	ChainAmount     string       `json:"chain_amount,omitempty"`
-	Chain           string       `json:"chain,omitempty"`
-	TokenID         string       `json:"token_id,omitempty"`
-	ExpiresAt       *time.Time   `json:"expires_at"`
-	PayableAmount   money.Amount `json:"payable_amount"`
+	PaymentID        uint                   `json:"payment_id"`
+	OrderNo          string                 `json:"order_no"`
+	ChannelID        uint                   `json:"channel_id"`
+	ChannelName      string                 `json:"channel_name,omitempty"`
+	ProviderType     string                 `json:"provider_type"`
+	ChannelType      string                 `json:"channel_type"`
+	InteractionMode  string                 `json:"interaction_mode"`
+	PayURL           string                 `json:"pay_url"`
+	QRCode           string                 `json:"qr_code"`
+	WalletAddress    string                 `json:"wallet_address,omitempty"`
+	ChainAmount      string                 `json:"chain_amount,omitempty"`
+	Chain            string                 `json:"chain,omitempty"`
+	TokenID          string                 `json:"token_id,omitempty"`
+	ClientBootstrap  map[string]interface{} `json:"client_bootstrap,omitempty"`
+	ClientGatewayURL string                 `json:"client_gateway_url,omitempty"`
+	ExpiresAt        *time.Time             `json:"expires_at"`
+	PayableAmount    money.Amount           `json:"payable_amount"`
 	// Currency 是 PayableAmount 的实际币种，见 CreatePaymentResp.Currency 注释。
 	Currency  string       `json:"currency"`
 	FeeAmount money.Amount `json:"fee_amount"`
@@ -107,26 +118,40 @@ type LatestPaymentResp struct {
 // NewLatestPaymentResp 从 Payment + Order 构造响应
 func NewLatestPaymentResp(payment *paymentdomain.Payment, orderNo string) LatestPaymentResp {
 	info := ExtractCryptoWalletInfo(payment.ProviderType, payment.InteractionMode, payment.ProviderPayload)
+	clientBootstrap, clientGatewayURL := ExtractLiandongBootstrap(payment.ProviderType, payment.ProviderPayload)
 	return LatestPaymentResp{
-		PaymentID:       payment.ID,
-		OrderNo:         orderNo,
-		ChannelID:       payment.ChannelID,
-		ChannelName:     payment.ChannelName,
-		ProviderType:    payment.ProviderType,
-		ChannelType:     payment.ChannelType,
-		InteractionMode: payment.InteractionMode,
-		PayURL:          payment.PayURL,
-		QRCode:          payment.QRCode,
-		WalletAddress:   info.Address,
-		ChainAmount:     info.ChainAmount,
-		Chain:           info.Chain,
-		TokenID:         info.TokenID,
-		ExpiresAt:       payment.ExpiredAt,
-		PayableAmount:   payment.Amount,
-		Currency:        payment.Currency,
-		FeeAmount:       payment.FeeAmount,
-		FeePolicy:       payment.FeePolicy,
+		PaymentID:        payment.ID,
+		OrderNo:          orderNo,
+		ChannelID:        payment.ChannelID,
+		ChannelName:      payment.ChannelName,
+		ProviderType:     payment.ProviderType,
+		ChannelType:      payment.ChannelType,
+		InteractionMode:  payment.InteractionMode,
+		PayURL:           payment.PayURL,
+		QRCode:           payment.QRCode,
+		WalletAddress:    info.Address,
+		ChainAmount:      info.ChainAmount,
+		Chain:            info.Chain,
+		TokenID:          info.TokenID,
+		ClientBootstrap:  clientBootstrap,
+		ClientGatewayURL: clientGatewayURL,
+		ExpiresAt:        payment.ExpiredAt,
+		PayableAmount:    payment.Amount,
+		Currency:         payment.Currency,
+		FeeAmount:        payment.FeeAmount,
+		FeePolicy:        payment.FeePolicy,
 	}
 	// 排除：OrderID、FeeRate、FixedFee、Currency、Status、
 	// ProviderRef、GatewayOrderNo、ProviderPayload、CreatedAt、UpdatedAt、PaidAt、CallbackAt
+}
+
+// ExtractLiandongBootstrap 只对 liandong provider 暴露浏览器直连参数，避免其他
+// provider 的内部 payload 通过支付接口外泄。
+func ExtractLiandongBootstrap(providerType string, payload map[string]interface{}) (map[string]interface{}, string) {
+	if !strings.EqualFold(strings.TrimSpace(providerType), "liandong") || payload == nil {
+		return nil, ""
+	}
+	gatewayURL, _ := payload["client_gateway_url"].(string)
+	bootstrap, _ := payload["client_bootstrap"].(map[string]interface{})
+	return bootstrap, strings.TrimSpace(gatewayURL)
 }

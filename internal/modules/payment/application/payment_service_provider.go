@@ -306,11 +306,15 @@ func (s *PaymentService) ValidateChannel(channel *paymentdomain.PaymentChannel) 
 		return nil
 	}
 
-	// 非 official provider（epay/bepusdt/epusdt/okpay/tokenpay）只支持 qr/redirect。
+	// 非 official provider（epay/bepusdt/epusdt/okpay/tokenpay/liandong）只支持 qr/redirect。
 	// official provider 的 interaction_mode 验证由各 adapter 的 ValidateConfig 负责。
 	if providerType != constants.PaymentProviderOfficial {
 		mode := strings.ToLower(strings.TrimSpace(channel.InteractionMode))
 		if mode != constants.PaymentInteractionQR && mode != constants.PaymentInteractionRedirect {
+			return ErrPaymentChannelConfigInvalid
+		}
+		// liandong（faka2api）只能走二维码收银流程。
+		if providerType == constants.PaymentProviderLiandong && mode != constants.PaymentInteractionQR {
 			return ErrPaymentChannelConfigInvalid
 		}
 		if providerType == constants.PaymentProviderBepusdt && mode == constants.PaymentInteractionQR {

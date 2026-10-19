@@ -91,7 +91,16 @@
             {{ t('personalCenter.wallet.pendingHint') }}
           </div>
           <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <div v-if="showQRCode" class="rounded-xl border p-4">
+            <div v-if="isLiandongPayment && liandongBootstrap" class="rounded-xl border p-4">
+              <div class="mb-3 text-sm font-semibold text-foreground">{{ t('payment.qrTitle') }}</div>
+              <LiandongPay
+                :bootstrap="liandongBootstrap"
+                :client-gateway-url="liandongClientGatewayUrl"
+                @paid="handleLiandongPaid"
+                @review="handleLiandongReview"
+              />
+            </div>
+            <div v-else-if="showQRCode" class="rounded-xl border p-4">
               <div class="mb-3 text-sm font-semibold text-foreground">{{ t('payment.qrTitle') }}</div>
               <div class="flex items-center justify-center">
                 <img :src="qrImageUrl" alt="Recharge QR" class="h-52 w-52 object-contain" />
@@ -125,7 +134,7 @@
                   <ExternalLink class="h-4 w-4" aria-hidden="true" />
                   {{ t('payment.openPayLink') }}
                 </Button>
-                <Button type="button" variant="outline" size="sm" :disabled="checkingPayment" @click="checkPayment">
+                <Button v-if="!isLiandongPayment" type="button" variant="outline" size="sm" :disabled="checkingPayment" @click="checkPayment">
                   {{ checkingPayment ? t('personalCenter.wallet.checkingPayStatus') : t('personalCenter.wallet.checkPayStatus') }}
                 </Button>
               </div>
@@ -152,12 +161,14 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import EmptyState from '../components/EmptyState.vue'
 import { useRechargeOrderDetail } from '../composables/useRechargeOrderDetail'
+import LiandongPay from '../components/LiandongPay.vue'
 
 const { t } = useI18n()
 
 const {
   loading, checkingPayment, recharge, payment, walletAddressCopied, qrImageUrl,
   isPending, payLink, showTelegramPayHint, qrUsingPayLinkFallback, showQRCode,
+  isLiandongPayment, liandongBootstrap, liandongClientGatewayUrl, handleLiandongPaid, handleLiandongReview,
   cryptoWalletAddress, cryptoPaymentDetails, hasCryptoPaymentDetails, customerFeeApplied,
   rechargeStatusText, rechargeStatusVariant, formatMoney, formatDate,
   loadDetail, checkPayment, handleOpenPayLink, handleCopyWalletAddress,

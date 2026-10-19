@@ -87,7 +87,16 @@
 
           <div class="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div class="lg:col-span-2 space-y-4">
-              <div v-if="showQRCode"
+              <div v-if="isLiandongPayment && liandongBootstrap"
+                class="bg-secondary border rounded-2xl p-4 sm:p-6">
+                <LiandongPay
+                  :bootstrap="liandongBootstrap"
+                  :client-gateway-url="liandongClientGatewayUrl"
+                  @paid="handleLiandongPaid"
+                  @review="handleLiandongReview"
+                />
+              </div>
+              <div v-else-if="showQRCode"
                 class="bg-secondary border rounded-2xl p-4 sm:p-6 flex flex-col items-center justify-center text-center">
                 <div class="text-sm text-muted-foreground mb-4">{{ paymentGuideTitle }}</div>
                 <div class="w-full max-w-[280px] sm:max-w-[240px] aspect-square rounded-xl overflow-hidden bg-white p-2">
@@ -501,6 +510,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { usePayment } from '../composables/usePayment'
+import LiandongPay from '../components/LiandongPay.vue'
 
 const { t } = useI18n()
 
@@ -511,6 +521,7 @@ const {
   selectedChannel, selectedChannelName, cachedChannelName, resultChannelName, interactionLabel,
   paymentResultTitle, paymentGuideTitle, paymentGuideTip, showPayLink, showTelegramPayHint, payLinkOpenedTip,
   cryptoWalletAddress, cryptoPaymentDetails, hasCryptoPaymentDetails, qrUsingPayLinkFallback, showQRCode, qrImageUrl,
+  isLiandongPayment, liandongBootstrap, liandongClientGatewayUrl, handleLiandongPaid, handleLiandongReview,
   orderExpired, orderCanceled, paymentAlert, countdownExpired, countdownText, showCountdown, showResultView, pollingActive, orderItems,
   customerFeeApplied, customerFeeAmountDisplay, payableAmountDisplay, walletBalanceDisplay,
   expectedWalletPaidDisplay, expectedOnlinePayDisplay, expectedOnlinePayCents, requiresOnlineChannel,
