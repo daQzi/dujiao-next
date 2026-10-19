@@ -46,8 +46,8 @@ func TestValidateConfigRejectsInvalidTiers(t *testing.T) {
 
 	cfg = testConfig("https://faka.example.com")
 	cfg.Goods = nil
-	if err := ValidateConfig(cfg); err == nil {
-		t.Fatal("empty goods must be rejected")
+	if err := ValidateConfig(cfg); err != nil {
+		t.Fatalf("empty goods must defer tier matching to faka2api: %v", err)
 	}
 }
 

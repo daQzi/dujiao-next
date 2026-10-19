@@ -197,7 +197,7 @@ const liandongConfig = reactive({
   merchant_key: '',
   notify_url: 'https://yourdomain.com/api/v1/payments/callback',
   return_url: '',
-  goods: [{ amount_fen: '1000', goods_key: '' }] as LiandongTier[],
+  goods: [] as LiandongTier[],
 })
 
 const epayChannelOptions = [
@@ -483,7 +483,7 @@ const resetLiandongConfig = () => {
   liandongConfig.merchant_key = ''
   liandongConfig.notify_url = 'https://yourdomain.com/api/v1/payments/callback'
   liandongConfig.return_url = ''
-  liandongConfig.goods = [{ amount_fen: '1000', goods_key: '' }]
+  liandongConfig.goods = []
 }
 
 const addLiandongTier = () => {
@@ -492,7 +492,6 @@ const addLiandongTier = () => {
 }
 
 const removeLiandongTier = (index: number) => {
-  if (liandongConfig.goods.length <= 1) return
   liandongConfig.goods.splice(index, 1)
 }
 
@@ -660,7 +659,7 @@ const applyLiandongConfig = (raw: Record<string, unknown>) => {
       }
     })
     .filter((item) => item.amount_fen !== '' || item.goods_key !== '')
-  liandongConfig.goods = tiers.length > 0 ? tiers : [{ amount_fen: '1000', goods_key: '' }]
+  liandongConfig.goods = tiers
 }
 
 // --- Build functions ---
@@ -962,7 +961,7 @@ const validateLiandongConfig = (): string => {
       goodsKey: String(tier.goods_key || '').trim(),
     }))
     .filter((tier) => tier.amountFen !== 0 || tier.goodsKey !== '')
-  if (goods.length === 0 || goods.length > maxLiandongTiers) {
+  if (goods.length > maxLiandongTiers) {
     return t('admin.paymentChannels.errors.liandongTiersInvalid')
   }
   const seen = new Set<number>()
@@ -2090,7 +2089,6 @@ const closeModal = () => {
                   type="button"
                   variant="outline"
                   size="sm"
-                  :disabled="liandongConfig.goods.length <= 1"
                   @click="removeLiandongTier(index)"
                 >
                   {{ t('admin.paymentChannels.modal.liandongRemoveTier') }}
