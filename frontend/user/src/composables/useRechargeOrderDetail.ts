@@ -36,9 +36,6 @@ export function useRechargeOrderDetail() {
   const payLink = computed(() => String(payment.value?.pay_url || '').trim())
   const interactionMode = computed(() => String(payment.value?.interaction_mode || '').trim().toLowerCase())
   const paymentPresentationMode = computed(() => resolvePaymentPresentationMode(interactionMode.value))
-  const isLiandongPayment = computed(() => String(payment.value?.provider_type || '').toLowerCase() === 'liandong')
-  const liandongBootstrap = computed(() => payment.value?.client_bootstrap || null)
-  const liandongClientGatewayUrl = computed(() => String(payment.value?.client_gateway_url || '').trim())
   const isTelegramMiniApp = computed(() => telegramMiniAppStore.isMiniApp && telegramMiniAppStore.isReady)
   const showTelegramPayHint = computed(() => isTelegramMiniApp.value && Boolean(payLink.value))
 
@@ -147,8 +144,6 @@ export function useRechargeOrderDetail() {
       expires_at: payload.expires_at,
       status: payload.status,
       fee_policy: payload.fee_policy,
-      client_bootstrap: payload.client_bootstrap,
-      client_gateway_url: payload.client_gateway_url,
     } : undefined)
     if (paymentData) {
       payment.value = paymentData
@@ -203,14 +198,6 @@ export function useRechargeOrderDetail() {
     } finally {
       checkingPayment.value = false
     }
-  }
-
-  const handleLiandongPaid = async () => {
-    await refreshStatus(true)
-  }
-
-  const handleLiandongReview = async () => {
-    await refreshStatus(true)
   }
 
   const startPolling = () => {
@@ -320,9 +307,6 @@ export function useRechargeOrderDetail() {
     checkingPayment,
     recharge,
     payment,
-    isLiandongPayment,
-    liandongBootstrap,
-    liandongClientGatewayUrl,
     walletAddressCopied,
     qrImageUrl,
     isPending,
@@ -341,8 +325,6 @@ export function useRechargeOrderDetail() {
     formatDate,
     loadDetail,
     checkPayment,
-    handleLiandongPaid,
-    handleLiandongReview,
     handleOpenPayLink,
     handleCopyWalletAddress,
   }

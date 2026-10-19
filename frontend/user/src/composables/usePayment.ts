@@ -189,15 +189,6 @@ export function usePayment() {
   const interactionMode = computed(() => String(paymentResult.value?.interaction_mode || '').trim().toLowerCase())
   const paymentPresentationMode = computed(() => resolvePaymentPresentationMode(interactionMode.value))
 
-  const isLiandongPayment = computed(() => paymentProviderType.value === 'liandong')
-  const liandongBootstrap = computed(() => paymentResult.value?.client_bootstrap || null)
-  const liandongClientGatewayUrl = computed(() => String(paymentResult.value?.client_gateway_url || '').trim())
-
-  // liandong 只返回 client_bootstrap（二维码由浏览器直连发卡平台生成），
-  // 因此判断“有可展示支付”时不能只看 pay_url/qr_code。
-  const hasRenderablePayment = (value: any) =>
-    Boolean(value && (value.pay_url || value.qr_code || value.client_bootstrap))
-
   const interactionLabel = computed(() => {
     const mode = interactionMode.value
     if (!mode) return '-'
@@ -796,7 +787,7 @@ export function usePayment() {
         response = await paymentAPI.latest({ order_no: orderNoResolved.value })
       }
       const data = response.data.data
-      if (hasRenderablePayment(data)) {
+      if (data && (data.pay_url || data.qr_code)) {
         cachedPayment.value = data
         paymentResult.value = data
         selectedChannelId.value = data.channel_id || null
@@ -993,7 +984,7 @@ export function usePayment() {
           channel_id: selectedChannelId.value,
         })
         paymentResult.value = response.data.data
-        if (hasRenderablePayment(paymentResult.value)) {
+        if (paymentResult.value?.pay_url || paymentResult.value?.qr_code) {
           cachedPayment.value = paymentResult.value
         }
         openedPayWindow.value = false
@@ -1024,7 +1015,7 @@ export function usePayment() {
           return
         }
         paymentResult.value = created
-        if (hasRenderablePayment(paymentResult.value)) {
+        if (paymentResult.value?.pay_url || paymentResult.value?.qr_code) {
           cachedPayment.value = paymentResult.value
         }
         openedPayWindow.value = false
@@ -1202,7 +1193,6 @@ export function usePayment() {
       'usdt-trc20': t('payment.channelTypes.usdtTrc20'),
       'usdc-trc20': t('payment.channelTypes.usdcTrc20'),
       trx: t('payment.channelTypes.trx'),
-      liandong: t('payment.channelTypes.liandong'),
     }
     if (!value) return '-'
     return map[value] || value
@@ -1350,14 +1340,6 @@ export function usePayment() {
     ])
   }
 
-  const handleLiandongPaid = async () => {
-    await handleRefresh()
-  }
-
-  const handleLiandongReview = async () => {
-    await handleRefresh()
-  }
-
   return {
     // state
     loading,
@@ -1400,9 +1382,6 @@ export function usePayment() {
     qrUsingPayLinkFallback,
     showQRCode,
     qrImageUrl,
-    isLiandongPayment,
-    liandongBootstrap,
-    liandongClientGatewayUrl,
     // status
     orderExpired,
     orderCanceled,
@@ -1446,7 +1425,5 @@ export function usePayment() {
     handlePayment,
     handleGuestAuthSubmit,
     handleRefresh,
-    handleLiandongPaid,
-    handleLiandongReview,
   }
 }

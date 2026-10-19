@@ -57,10 +57,6 @@ func (a callbackServiceTestAdapter) HandleSyncCallback(channel *paymentdomain.Pa
 	return a.payments.HandleSyncCallback(channel, form, body)
 }
 
-func (a callbackServiceTestAdapter) HandleSyncCallbackWithHeaders(channel *paymentdomain.PaymentChannel, form map[string][]string, headers map[string]string, body []byte) (*paymentdomain.Payment, error) {
-	return a.payments.HandleSyncCallbackWithHeaders(channel, form, headers, body)
-}
-
 func (a callbackServiceTestAdapter) HandleWechatWebhook(input paymentcallback.WechatWebhookInput) (*paymentdomain.Payment, string, error) {
 	return a.payments.HandleWechatWebhook(paymentapp.WebhookCallbackInput{
 		ChannelID: input.ChannelID,

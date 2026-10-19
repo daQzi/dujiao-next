@@ -85,16 +85,7 @@
         <h2 class="mb-4 text-lg font-bold">{{ t('rechargeOrder.paymentTitle') }}</h2>
         <div class="mb-3.5 text-[13px] text-muted-foreground">{{ t('personalCenter.wallet.pendingHint') }}</div>
         <div class="grid gap-[18px] md:grid-cols-2">
-          <div v-if="isLiandongPayment && liandongBootstrap" class="rounded-xl border bg-secondary p-5">
-            <div class="mb-3 text-[13px] text-muted-foreground">{{ t('payment.qrTitle') }}</div>
-            <LiandongPay
-              :bootstrap="liandongBootstrap"
-              :client-gateway-url="liandongClientGatewayUrl"
-              @paid="handleLiandongPaid"
-              @review="handleLiandongReview"
-            />
-          </div>
-          <div v-else-if="showQRCode" class="flex flex-col items-center rounded-xl border bg-secondary p-5 text-center">
+          <div v-if="showQRCode" class="flex flex-col items-center rounded-xl border bg-secondary p-5 text-center">
             <div class="mb-3 text-[13px] text-muted-foreground">{{ t('payment.qrTitle') }}</div>
             <div class="aspect-square w-full max-w-[220px] overflow-hidden rounded-md bg-white p-2"><img :src="qrImageUrl" alt="Recharge QR" class="h-full w-full object-contain" /></div>
             <div v-if="qrUsingPayLinkFallback" class="mt-3 text-[13px] text-muted-foreground">{{ t('payment.qrFallbackHint') }}</div>
@@ -112,7 +103,7 @@
             </div>
             <div class="mt-3.5 flex flex-wrap gap-2.5">
               <Button v-if="payLink" type="button" variant="outline" size="sm" class="rounded-full" @click="handleOpenPayLink">{{ t('payment.openPayLink') }}</Button>
-              <Button v-if="!isLiandongPayment" type="button" size="sm" class="rounded-full" :disabled="checkingPayment" @click="checkPayment">
+              <Button type="button" size="sm" class="rounded-full" :disabled="checkingPayment" @click="checkPayment">
                 {{ checkingPayment ? t('personalCenter.wallet.checkingPayStatus') : t('personalCenter.wallet.checkPayStatus') }}
               </Button>
             </div>
@@ -136,14 +127,12 @@ import { AlertCircle, CheckCircle2 } from 'lucide-vue-next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useRechargeOrderDetail } from '../../composables/useRechargeOrderDetail'
-import LiandongPay from '../../components/LiandongPay.vue'
 
 const { t } = useI18n()
 
 const {
   loading, checkingPayment, recharge, payment, walletAddressCopied, qrImageUrl,
   isPending, payLink, showTelegramPayHint, qrUsingPayLinkFallback, showQRCode,
-  isLiandongPayment, liandongBootstrap, liandongClientGatewayUrl, handleLiandongPaid, handleLiandongReview,
   cryptoWalletAddress, cryptoPaymentDetails, hasCryptoPaymentDetails, customerFeeApplied,
   rechargeStatusText, rechargeStatusVariant, formatMoney, formatDate,
   loadDetail, checkPayment, handleOpenPayLink, handleCopyWalletAddress,

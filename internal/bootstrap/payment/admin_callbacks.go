@@ -127,10 +127,6 @@ func (a callbackServiceAdapter) HandleSyncCallback(channel *paymentdomain.Paymen
 	return a.payments.HandleSyncCallback(channel, form, body)
 }
 
-func (a callbackServiceAdapter) HandleSyncCallbackWithHeaders(channel *paymentdomain.PaymentChannel, form map[string][]string, headers map[string]string, body []byte) (*paymentdomain.Payment, error) {
-	return a.payments.HandleSyncCallbackWithHeaders(channel, form, headers, body)
-}
-
 func (a callbackServiceAdapter) HandleWechatWebhook(input paymentcallbacktransport.WechatWebhookInput) (*paymentdomain.Payment, string, error) {
 	payment, eventType, err := a.payments.HandleWechatWebhook(paymentapp.WebhookCallbackInput{
 		ChannelID: input.ChannelID,

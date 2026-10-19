@@ -27,7 +27,6 @@ type WechatWebhookInput struct {
 // Service is the application boundary used by synchronous payment callbacks.
 type Service interface {
 	HandleSyncCallback(channel *paymentdomain.PaymentChannel, form map[string][]string, body []byte) (*paymentdomain.Payment, error)
-	HandleSyncCallbackWithHeaders(channel *paymentdomain.PaymentChannel, form map[string][]string, headers map[string]string, body []byte) (*paymentdomain.Payment, error)
 	HandleWechatWebhook(input WechatWebhookInput) (*paymentdomain.Payment, string, error)
 }
 
@@ -80,7 +79,6 @@ func (h *Handler) PaymentCallback(c *gin.Context) {
 		h.handleTokenPayCallback,
 		h.handleEpusdtCallback,
 		h.handleBepusdtCallback,
-		h.handleLiandongCallback,
 	} {
 		if handle(c) {
 			return

@@ -52,15 +52,7 @@
       <div class="mt-5 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
         <div>
           <!-- QR -->
-          <div v-if="isLiandongPayment && liandongBootstrap" class="rounded-xl border bg-secondary p-[22px]">
-            <LiandongPay
-              :bootstrap="liandongBootstrap"
-              :client-gateway-url="liandongClientGatewayUrl"
-              @paid="handleLiandongPaid"
-              @review="handleLiandongReview"
-            />
-          </div>
-          <div v-else-if="showQRCode" class="flex flex-col items-center rounded-xl border bg-secondary p-[22px] text-center">
+          <div v-if="showQRCode" class="flex flex-col items-center rounded-xl border bg-secondary p-[22px] text-center">
             <div class="mb-3 text-[13px] text-muted-foreground">{{ paymentGuideTitle }}</div>
             <div class="aspect-square w-full max-w-[240px] overflow-hidden rounded-md bg-white p-2"><img :src="qrImageUrl" alt="QR Code" class="h-full w-full object-contain" /></div>
             <div v-if="qrUsingPayLinkFallback" class="mt-2.5 text-xs text-muted-foreground">{{ t('payment.qrFallbackHint') }}</div>
@@ -266,7 +258,6 @@ import PaymentAmountBreakdown from '../../components/payment/PaymentAmountBreakd
 import PaymentChannelSelector from '../../components/payment/PaymentChannelSelector.vue'
 import VaultCheckoutSteps from './components/VaultCheckoutSteps.vue'
 import { usePayment } from '../../composables/usePayment'
-import LiandongPay from '../../components/LiandongPay.vue'
 
 const { t } = useI18n()
 
@@ -277,7 +268,6 @@ const {
   selectedChannel, selectedChannelName, cachedChannelName, resultChannelName, interactionLabel,
   paymentResultTitle, paymentGuideTitle, paymentGuideTip, showPayLink, showTelegramPayHint, payLinkOpenedTip,
   cryptoWalletAddress, cryptoPaymentDetails, hasCryptoPaymentDetails, qrUsingPayLinkFallback, showQRCode, qrImageUrl,
-  isLiandongPayment, liandongBootstrap, liandongClientGatewayUrl, handleLiandongPaid, handleLiandongReview,
   orderExpired, orderCanceled, paymentAlert, countdownExpired, countdownText, showCountdown, showResultView, pollingActive, orderItems,
   customerFeeApplied, customerFeeAmountDisplay, payableAmountDisplay, walletBalanceDisplay,
   expectedWalletPaidDisplay, expectedOnlinePayDisplay, expectedOnlinePayCents, requiresOnlineChannel,

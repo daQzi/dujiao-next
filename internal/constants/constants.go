@@ -63,7 +63,6 @@ const (
 	PaymentProviderDujiaoPay = "dujiaopay"
 	PaymentProviderOkpay     = "okpay"
 	PaymentProviderTokenpay  = "tokenpay"
-	PaymentProviderLiandong  = "liandong"
 	PaymentProviderWallet    = "wallet"
 )
 
@@ -219,15 +218,6 @@ const (
 const (
 	TokenPayCallbackSuccess = "ok"
 	TokenPayCallbackFail    = "fail"
-)
-
-// Liandong（链动 / faka2api）回调常量
-const (
-	LiandongCallbackEventSuccess = "payment.succeeded"
-	LiandongCallbackEventExpired = "order.expired"
-	LiandongCallbackVerifyServer = "server_verified"
-	LiandongCallbackSuccess      = "success"
-	LiandongCallbackFail         = "fail"
 )
 
 // 文章类型常量

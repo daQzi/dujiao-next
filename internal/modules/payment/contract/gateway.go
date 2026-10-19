@@ -99,13 +99,6 @@ type GatewayCallbackVerifier interface {
 	VerifyCallback(cfg jsonmap.JSON, form map[string][]string, body []byte) (*GatewayCallbackResult, error)
 }
 
-// GatewayHeaderCallbackVerifier 是需要在验签时读取 HTTP 头的同步回调能力。
-// 部分网关（如 liandong/faka2api）同时签名 body 和请求头，无法只凭 body 完成验签。
-type GatewayHeaderCallbackVerifier interface {
-	GatewayProvider
-	VerifyCallbackWithHeaders(cfg jsonmap.JSON, form map[string][]string, headers map[string]string, body []byte) (*GatewayCallbackResult, error)
-}
-
 // GatewayRegistry 是应用层使用的只读网关注册表端口。
 type GatewayRegistry interface {
 	Lookup(providerType, channelType string) (GatewayProvider, bool)

@@ -24,23 +24,12 @@ type WebhookCallbackInput struct {
 	Context   context.Context
 }
 
-// HandleSyncCallback 处理同步 form callback（alipay/epay/epusdt/bepusdt/tokenpay/okpay/liandong）。
+// HandleSyncCallback 处理同步 form callback（alipay/epay/epusdt/bepusdt/tokenpay/okpay）。
 // 通过 Registry 找到 adapter 的 CallbackVerifier 能力解析并验签 form/body，然后调 HandleCallback。
 // channel 必须由 caller 加载好传入（handler 负责找到 payment→channel 并验证类型）。
 func (s *PaymentService) HandleSyncCallback(
 	channel *paymentdomain.PaymentChannel,
 	form map[string][]string,
-	body []byte,
-) (*paymentdomain.Payment, error) {
-	return s.HandleSyncCallbackWithHeaders(channel, form, nil, body)
-}
-
-// HandleSyncCallbackWithHeaders 与 HandleSyncCallback 相同，但会把 HTTP 头传给
-// 需要头部签名的 adapter（如 liandong）。adapter 未实现 header-aware 能力时自动回退。
-func (s *PaymentService) HandleSyncCallbackWithHeaders(
-	channel *paymentdomain.PaymentChannel,
-	form map[string][]string,
-	headers map[string]string,
 	body []byte,
 ) (*paymentdomain.Payment, error) {
 	if channel == nil {
@@ -54,26 +43,14 @@ func (s *PaymentService) HandleSyncCallbackWithHeaders(
 	if !ok {
 		return nil, ErrPaymentProviderNotSupported
 	}
-
-	var (
-		result *paymentcontract.GatewayCallbackResult
-		err    error
-	)
-	if verifier, ok := p.(paymentcontract.GatewayHeaderCallbackVerifier); ok {
-		result, err = verifier.VerifyCallbackWithHeaders(channel.ConfigJSON, form, headers, body)
-	} else {
-		verifier, ok := p.(paymentcontract.GatewayCallbackVerifier)
-		if !ok {
-			return nil, ErrPaymentProviderNotSupported
-		}
-		result, err = verifier.VerifyCallback(channel.ConfigJSON, form, body)
+	verifier, ok := p.(paymentcontract.GatewayCallbackVerifier)
+	if !ok {
+		return nil, ErrPaymentProviderNotSupported
 	}
+
+	result, err := verifier.VerifyCallback(channel.ConfigJSON, form, body)
 	if err != nil {
 		return nil, mapProviderErrorToService(err)
-	}
-	if result == nil || result.Status == "" {
-		// 无需处理的事件（例如 payment.pending_review）直接忽略。
-		return nil, nil
 	}
 
 	// WebhookResult = CallbackResult（类型别名），findWebhookPayment 直接复用。

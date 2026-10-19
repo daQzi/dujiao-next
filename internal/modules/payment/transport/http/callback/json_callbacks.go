@@ -158,89 +158,6 @@ func (h *Handler) handleBepusdtCallback(c *gin.Context) bool {
 	})
 }
 
-func (h *Handler) handleLiandongCallback(c *gin.Context) bool {
-	body, ok := readCallbackBody(c)
-	if !ok {
-		return false
-	}
-	var probe struct {
-		Event      string `json:"event"`
-		OutTradeNo string `json:"out_trade_no"`
-		Sign       string `json:"sign"`
-	}
-	if err := json.Unmarshal(body, &probe); err != nil {
-		ginutil.RequestLog(c).Debugw("liandong_callback_parse_failed", "error", err)
-		return false
-	}
-	probe.Event = strings.TrimSpace(probe.Event)
-	probe.OutTradeNo = strings.TrimSpace(probe.OutTradeNo)
-	probe.Sign = strings.TrimSpace(probe.Sign)
-	if probe.Event == "" || probe.OutTradeNo == "" || probe.Sign == "" {
-		ginutil.RequestLog(c).Debugw("liandong_callback_not_matched")
-		return false
-	}
-	ginutil.RequestLog(c).Infow("liandong_callback_received",
-		"event", probe.Event,
-		"out_trade_no", probe.OutTradeNo,
-		"body_size", len(body),
-	)
-
-	log := ginutil.RequestLog(c)
-	payment, err := h.payments.GetByGatewayOrderNo(probe.OutTradeNo)
-	if err != nil || payment == nil {
-		log.Warnw("liandong_callback_payment_not_found", "out_trade_no", probe.OutTradeNo, "error", err)
-		c.String(http.StatusOK, constants.LiandongCallbackFail)
-		return true
-	}
-	channel, err := h.channels.GetByID(payment.ChannelID)
-	if err != nil || channel == nil {
-		log.Warnw("liandong_callback_channel_not_found", "payment_id", payment.ID, "channel_id", payment.ChannelID, "error", err)
-		c.String(http.StatusOK, constants.LiandongCallbackFail)
-		return true
-	}
-	if !strings.EqualFold(strings.TrimSpace(channel.ProviderType), constants.PaymentProviderLiandong) {
-		log.Warnw("liandong_callback_provider_invalid",
-			"payment_id", payment.ID,
-			"channel_id", channel.ID,
-			"provider_type", channel.ProviderType,
-		)
-		c.String(http.StatusOK, constants.LiandongCallbackFail)
-		return true
-	}
-
-	headers := map[string]string{
-		"X-Faka-Timestamp": strings.TrimSpace(c.GetHeader("X-Faka-Timestamp")),
-		"X-Faka-Signature": strings.TrimSpace(c.GetHeader("X-Faka-Signature")),
-	}
-	updated, err := h.service.HandleSyncCallbackWithHeaders(channel, nil, headers, body)
-	if err != nil {
-		log.Errorw("liandong_callback_handle_failed", "payment_id", payment.ID, "error", err)
-		h.enqueuePaymentExceptionAlert(c, jsonmap.JSON{
-			"alert_type": "liandong_callback_handle_failed", "alert_level": "error",
-			"payment_id":   fmt.Sprintf("%d", payment.ID),
-			"out_trade_no": probe.OutTradeNo,
-			"message":      strings.TrimSpace(err.Error()),
-			"provider":     constants.PaymentProviderLiandong,
-		})
-		c.String(http.StatusOK, constants.LiandongCallbackFail)
-		return true
-	}
-	if updated == nil {
-		// 无需落库的事件（如 payment.pending_review），仍要 ACK 防止上游重试。
-		log.Infow("liandong_callback_ignored", "payment_id", payment.ID, "event", probe.Event)
-		c.String(http.StatusOK, constants.LiandongCallbackSuccess)
-		return true
-	}
-	log.Infow("liandong_callback_processed",
-		"payment_id", payment.ID,
-		"out_trade_no", probe.OutTradeNo,
-		"event", probe.Event,
-		"status", updated.Status,
-	)
-	c.String(http.StatusOK, constants.LiandongCallbackSuccess)
-	return true
-}
-
 func readCallbackBody(c *gin.Context) ([]byte, bool) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -289,11 +206,6 @@ func (h *Handler) processBodyCallback(c *gin.Context, body []byte, callback body
 			h.enqueuePaymentExceptionAlert(c, alert)
 		}
 		respondBodyCallback(c, callback, false)
-		return true
-	}
-	if updated == nil {
-		log.Infow(callback.logPrefix+"_callback_ignored", "payment_id", payment.ID)
-		respondBodyCallback(c, callback, true)
 		return true
 	}
 	log.Infow(callback.logPrefix+"_callback_processed", "payment_id", payment.ID, "status", updated.Status)
