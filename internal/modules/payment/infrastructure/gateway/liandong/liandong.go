@@ -125,9 +125,8 @@ func ValidateConfig(cfg *Config) error {
 			return fmt.Errorf("%w: return_url is invalid", ErrConfigInvalid)
 		}
 	}
-	// goods 可留空：留空时由 faka2api 按金额自动匹配商品档位，避免两处配置不同步。
-	if len(cfg.Goods) > 12 {
-		return fmt.Errorf("%w: goods must have at most 12 amount mappings", ErrConfigInvalid)
+	if len(cfg.Goods) == 0 || len(cfg.Goods) > 12 {
+		return fmt.Errorf("%w: goods must have 1-12 amount mappings", ErrConfigInvalid)
 	}
 	seen := make(map[int64]struct{}, len(cfg.Goods))
 	for _, item := range cfg.Goods {
@@ -178,11 +177,8 @@ func CreatePayment(ctx context.Context, cfg *Config, orderNo, subject string, am
 	if len(orderNo) < 6 || len(orderNo) > 64 {
 		return nil, fmt.Errorf("%w: out_trade_no length must be 6-64", ErrConfigInvalid)
 	}
-	// 仅在 Dujiao 侧显式配置了档位时才做本地校验；否则交给 faka2api 判定。
-	if len(cfg.Goods) > 0 {
-		if _, ok := cfg.GoodsForAmount(amount); !ok {
-			return nil, fmt.Errorf("%w: payment amount does not match a configured goods tier", ErrConfigInvalid)
-		}
+	if _, ok := cfg.GoodsForAmount(amount); !ok {
+		return nil, fmt.Errorf("%w: payment amount does not match a configured goods tier", ErrConfigInvalid)
 	}
 	amountFen := amount.Mul(decimal.NewFromInt(100)).IntPart()
 	body, err := json.Marshal(map[string]interface{}{
